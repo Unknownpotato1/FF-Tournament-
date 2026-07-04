@@ -73,3 +73,49 @@ export async function uploadScreenshot(
 export function getCloudName(): string {
   return process.env.CLOUDINARY_CLOUD_NAME || "";
 }
+
+/**
+ * Upload an avatar (profile picture) to Cloudinary.
+ * Square-cropped to 400x400 for consistent display.
+ */
+export async function uploadAvatar(
+  buffer: Buffer,
+  userId: string,
+  originalName: string
+): Promise<{ url: string; publicId: string }> {
+  ensureConfigured();
+
+  const safeName = originalName.replace(/[^a-zA-Z0-9.-]/g, "_").slice(0, 50);
+  const folder = `ff-tournament/avatars/${userId}`;
+  const publicId = `${Date.now()}-${safeName.replace(/\.[^.]+$/, "")}`;
+
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader
+      .upload_stream(
+        {
+          folder,
+          public_id: publicId,
+          resource_type: "image",
+          // Square crop + smaller size for avatars (saves storage on free tier)
+          transformation: [
+            { width: 400, height: 400, crop: "thumb", gravity: "face", quality: "auto" },
+          ],
+        },
+        (err, result) => {
+          if (err) {
+            reject(new Error(err.message || "Cloudinary avatar upload failed"));
+            return;
+          }
+          if (!result) {
+            reject(new Error("Cloudinary returned no result"));
+            return;
+          }
+          resolve({
+            url: result.secure_url,
+            publicId: result.public_id,
+          });
+        }
+      )
+      .end(buffer);
+  });
+}

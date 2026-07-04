@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -31,6 +32,12 @@ import {
   Clock,
   XCircle,
   IndianRupee,
+  AlertTriangle,
+  Pencil,
+  Loader2,
+  Upload,
+  Check,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -98,7 +105,7 @@ async function fetchDashboard(): Promise<Dashboard> {
 
 export function DashboardModal() {
   const { activeModal, closeModal } = useUI();
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
   const qc = useQueryClient();
   const isOpen = activeModal === "dashboard";
 
@@ -107,6 +114,100 @@ export function DashboardModal() {
     queryFn: fetchDashboard,
     enabled: isOpen && !!user,
   });
+
+  // ---- Edit Profile state ----
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editPhotoURL, setEditPhotoURL] = useState<string | null>(null);
+  const [editPhotoPreview, setEditPhotoPreview] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleEditStart = () => {
+    if (data?.profile) {
+      setEditName(data.profile.name);
+      setEditPhotoURL(data.profile.photoURL);
+      setEditPhotoPreview(data.profile.photoURL);
+      setEditing(true);
+    }
+  };
+
+  const handleEditCancel = () => {
+    setEditing(false);
+    setEditName("");
+    setEditPhotoURL(null);
+    setEditPhotoPreview(null);
+  };
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("File too large", { description: "Max 2MB allowed" });
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      toast.error("Invalid file", { description: "Please upload an image" });
+      return;
+    }
+    // Preview immediately
+    setEditPhotoPreview(URL.createObjectURL(file));
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("type", "avatar");
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const result = await res.json();
+      if (result.ok) {
+        setEditPhotoURL(result.url);
+        toast.success("Photo uploaded");
+      } else {
+        throw new Error(result.error || "Upload failed");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      toast.error("Upload failed", { description: msg });
+      setEditPhotoPreview(data?.profile.photoURL ?? null);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim() || editName.trim().length < 2) {
+      toast.error("Name too short", { description: "Min 2 characters" });
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const res = await fetch("/api/user/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          photoURL: editPhotoURL,
+        }),
+      });
+      const result = await res.json();
+      if (result.ok) {
+        toast.success("Profile updated!");
+        setEditing(false);
+        // Refresh auth context (updates navbar avatar/name immediately)
+        await refresh();
+        // Refresh dashboard data
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      } else {
+        throw new Error(result.error || "Update failed");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Update failed";
+      toast.error("Update failed", { description: msg });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   const handleMarkRead = async () => {
     await fetch("/api/notifications", { method: "POST" });
@@ -140,34 +241,119 @@ export function DashboardModal() {
               </>
             ) : (
               <>
-                <Avatar className="w-16 h-16 border-2 border-[#00ff9d]/40">
-                  <AvatarImage src={data.profile.photoURL ?? undefined} alt={data.profile.name} />
-                  <AvatarFallback className="bg-[#00ff9d]/20 text-[#00ff9d] text-2xl font-black">
-                    {data.profile.name.charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-black text-white truncate">{data.profile.name}</h2>
-                    {data.profile.role === "admin" && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ff6b1a]/20 text-[#ff6b1a] border border-[#ff6b1a]/40 flex items-center gap-1">
-                        <Shield className="w-3 h-3" /> ADMIN
-                      </span>
-                    )}
+                {editing ? (
+                  // ---- Edit Profile Mode ----
+                  <div className="flex-1 space-y-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoChange}
+                      className="hidden"
+                    />
+                    <div className="flex items-center gap-4">
+                      {/* Avatar with edit overlay */}
+                      <div className="relative flex-shrink-0">
+                        <Avatar className="w-16 h-16 border-2 border-[#00ff9d]/60">
+                          <AvatarImage src={editPhotoPreview ?? undefined} alt="Profile" />
+                          <AvatarFallback className="bg-[#00ff9d]/20 text-[#00ff9d] text-2xl font-black">
+                            {(editName || "?").charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingPhoto}
+                          className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#00ff9d] text-black flex items-center justify-center hover:glow-green disabled:opacity-50"
+                          aria-label="Change photo"
+                        >
+                          {uploadingPhoto ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Display Name</label>
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          maxLength={40}
+                          placeholder="Your name"
+                          className="w-full mt-0.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-[#00ff9d] text-white text-sm"
+                        />
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Tap the camera icon to upload a photo from your gallery
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveProfile}
+                        disabled={savingProfile || uploadingPhoto}
+                        className="btn-glow-green rounded-full px-5 py-2 text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {savingProfile ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Check className="w-3.5 h-3.5" />
+                        )}
+                        Save
+                      </button>
+                      <button
+                        onClick={handleEditCancel}
+                        disabled={savingProfile}
+                        className="px-5 py-2 rounded-full glass-card text-xs font-bold text-muted-foreground hover:text-white flex items-center gap-1.5"
+                      >
+                        <X className="w-3.5 h-3.5" /> Cancel
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">{data.profile.email}</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Joined {new Date(data.profile.registeredAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => { logout(); closeModal(); }}
-                  className="text-red-400 hover:bg-red-500/10 hover:text-red-400"
-                >
-                  <LogOut className="w-4 h-4" />
-                </Button>
+                ) : (
+                  // ---- View Mode (default) ----
+                  <>
+                    <Avatar className="w-16 h-16 border-2 border-[#00ff9d]/40">
+                      <AvatarImage src={data.profile.photoURL ?? undefined} alt={data.profile.name} />
+                      <AvatarFallback className="bg-[#00ff9d]/20 text-[#00ff9d] text-2xl font-black">
+                        {data.profile.name.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-black text-white truncate">{data.profile.name}</h2>
+                        {data.profile.role === "admin" && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#ff6b1a]/20 text-[#ff6b1a] border border-[#ff6b1a]/40 flex items-center gap-1">
+                            <Shield className="w-3 h-3" /> ADMIN
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{data.profile.email}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Joined {new Date(data.profile.registeredAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleEditStart}
+                        className="text-[#00ff9d] hover:bg-[#00ff9d]/10 hover:text-[#00ff9d] text-xs"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { logout(); closeModal(); }}
+                        className="text-red-400 hover:bg-red-500/10 hover:text-red-400 text-xs"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -249,20 +435,30 @@ export function DashboardModal() {
                         </div>
                       </div>
                       {m.roomPublished && m.roomId ? (
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                          <div className="rounded bg-[#00ff9d]/10 border border-[#00ff9d]/30 p-2">
-                            <div className="flex items-center gap-1 text-[10px] text-[#00ff9d] mb-0.5">
-                              <Key className="w-3 h-3" /> Room ID
+                        <>
+                          <div className="grid grid-cols-2 gap-2 mt-2">
+                            <div className="rounded bg-[#00ff9d]/10 border border-[#00ff9d]/30 p-2">
+                              <div className="flex items-center gap-1 text-[10px] text-[#00ff9d] mb-0.5">
+                                <Key className="w-3 h-3" /> Room ID
+                              </div>
+                              <div className="font-mono font-bold text-white text-sm">{m.roomId}</div>
                             </div>
-                            <div className="font-mono font-bold text-white text-sm">{m.roomId}</div>
-                          </div>
-                          <div className="rounded bg-[#00ff9d]/10 border border-[#00ff9d]/30 p-2">
-                            <div className="flex items-center gap-1 text-[10px] text-[#00ff9d] mb-0.5">
-                              <Key className="w-3 h-3" /> Password
+                            <div className="rounded bg-[#00ff9d]/10 border border-[#00ff9d]/30 p-2">
+                              <div className="flex items-center gap-1 text-[10px] text-[#00ff9d] mb-0.5">
+                                <Key className="w-3 h-3" /> Password
+                              </div>
+                              <div className="font-mono font-bold text-white text-sm">{m.roomPassword}</div>
                             </div>
-                            <div className="font-mono font-bold text-white text-sm">{m.roomPassword}</div>
                           </div>
-                        </div>
+                          {/* Disqualification warning */}
+                          <div className="mt-2 rounded-lg bg-red-500/10 border border-red-500/30 p-2.5 flex items-start gap-2">
+                            <AlertTriangle className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" />
+                            <p className="text-[11px] text-red-400 leading-relaxed">
+                              <span className="font-bold">⚠️ Strict Warning:</span> Do NOT invite friends or share the Room ID &amp; Password with anyone.
+                              Players who share room credentials will be <span className="font-bold">immediately disqualified</span> without refund.
+                            </p>
+                          </div>
+                        </>
                       ) : (
                         <div className="flex items-center gap-1.5 text-[11px] text-yellow-400 mt-2">
                           <Clock className="w-3 h-3" /> Room details auto-publish 5 mins after slots fill
