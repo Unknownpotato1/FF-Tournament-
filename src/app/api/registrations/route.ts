@@ -23,13 +23,14 @@ export async function POST(req: Request) {
     if ((t.filledSlots ?? 0) >= (t.slotLimit ?? 0)) return NextResponse.json({ ok: false, error: "Tournament is full" }, { status: 400 });
 
     // Check for existing registration
+    // Use single where + client-side filter to avoid composite index
     const existingSnap = await db
       .collection("registrations")
       .where("tournamentId", "==", tournamentId)
-      .where("userId", "==", user.uid)
-      .limit(1)
+      .limit(100)
       .get();
-    if (!existingSnap.empty) {
+    const alreadyRegistered = existingSnap.docs.some((d) => d.data().userId === user.uid);
+    if (alreadyRegistered) {
       return NextResponse.json({ ok: false, error: "Already registered for this tournament" }, { status: 400 });
     }
 

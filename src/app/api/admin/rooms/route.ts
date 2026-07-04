@@ -25,11 +25,13 @@ export async function POST(req: Request) {
         updatedAt: FieldValue.serverTimestamp(),
       });
       // Notify all approved registrations
-      const approvedSnap = await tx.get(
-        db.collection("registrations").where("tournamentId", "==", tournamentId).where("status", "==", "approved")
+      // Use single where + client-side filter to avoid composite index
+      const regSnap = await tx.get(
+        db.collection("registrations").where("tournamentId", "==", tournamentId)
       );
-      approvedSnap.forEach((regDoc) => {
+      regSnap.forEach((regDoc) => {
         const reg = regDoc.data();
+        if (reg.status !== "approved") return; // skip non-approved
         tx.create(db.collection("notifications").doc(), {
           userId: reg.userId,
           title: "Room Details Published",

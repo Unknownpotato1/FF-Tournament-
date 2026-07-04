@@ -35,15 +35,15 @@ export async function GET(req: Request) {
 
     const user = await getCurrentUser();
     if (user) {
+      // Two where clauses need a composite index. Use single where + client filter.
       const regSnap = await db
         .collection("registrations")
         .where("tournamentId", "==", id)
-        .where("userId", "==", user.uid)
-        .limit(1)
+        .limit(50)
         .get();
+      const regDoc = regSnap.docs.find((d) => d.data().userId === user.uid);
 
-      if (!regSnap.empty) {
-        const regDoc = regSnap.docs[0];
+      if (regDoc) {
         const reg = regDoc.data();
         myRegistration = {
           status: reg.status,

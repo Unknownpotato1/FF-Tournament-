@@ -13,15 +13,28 @@ export async function GET(req: Request) {
     const status = searchParams.get("status");
 
     const db = getAdminDb();
-    let q;
+    // Fetch without orderBy / multiple where (avoids composite indexes). Filter + sort client-side.
+    let snap;
     if (user.role === "admin") {
-      q = db.collection("paymentRequests").orderBy("submittedAt", "desc");
+      snap = await db.collection("paymentRequests").limit(200).get();
     } else {
-      q = db.collection("paymentRequests").where("userId", "==", user.uid).orderBy("submittedAt", "desc");
+      snap = await db.collection("paymentRequests").where("userId", "==", user.uid).limit(200).get();
     }
-    if (status) q = q.where("status", "==", status);
 
-    const snap = await q.limit(100).get();
+    // Filter by status if requested
+    let docs = snap.docs;
+    if (status) {
+      docs = docs.filter((d) => d.data().status === status);
+    }
+
+    // Sort by submittedAt desc
+    docs.sort((a, b) => {
+      const av = a.data().submittedAt;
+      const bv = b.data().submittedAt;
+      const aMs = av instanceof Date ? av.getTime() : av?._seconds ? av._seconds * 1000 : 0;
+      const bMs = bv instanceof Date ? bv.getTime() : bv?._seconds ? bv._seconds * 1000 : 0;
+      return bMs - aMs;
+    });
 
     // Hydrate user + tournament info
     const userIds = [...new Set(snap.docs.map((d) => d.data().userId))];
@@ -33,7 +46,7 @@ export async function GET(req: Request) {
     const userMap = new Map(userSnaps.filter((s) => s.exists).map((s) => [s.id, s.data()!]));
     const tMap = new Map(tSnaps.filter((s) => s.exists).map((s) => [s.id, s.data()!]));
 
-    const payments = snap.docs.map((doc) => {
+    const payments = docs.map((doc) => {
       const p = doc.data();
       const pu = userMap.get(p.userId) ?? {};
       const pt = tMap.get(p.tournamentId) ?? {};

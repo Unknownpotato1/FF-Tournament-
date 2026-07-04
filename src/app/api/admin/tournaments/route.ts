@@ -8,11 +8,22 @@ export async function GET() {
   try {
     await requireAdmin();
     const db = getAdminDb();
-    const snap = await db.collection("tournaments").orderBy("createdAt", "desc").get();
-    const tournaments = snap.docs.map((doc) => {
-      const t = doc.data();
-      return {
-        id: doc.id,
+    // Fetch without orderBy (avoids potential index issues), sort client-side
+    const snap = await db.collection("tournaments").get();
+
+    const tournaments = snap.docs
+      .map((doc) => {
+        const t = doc.data();
+        const createdAt = t.createdAt instanceof Date
+          ? t.createdAt.toISOString()
+          : t.createdAt?._seconds
+          ? new Date(t.createdAt._seconds * 1000).toISOString()
+          : new Date().toISOString();
+        return { id: doc.id, t, createdAt, ms: new Date(createdAt).getTime() };
+      })
+      .sort((a, b) => b.ms - a.ms)
+      .map(({ id, t, createdAt }) => ({
+        id,
         type: t.type,
         title: t.title,
         entryFee: t.entryFee,
@@ -27,9 +38,8 @@ export async function GET() {
         roomPassword: t.roomPassword ?? null,
         rules: t.rules,
         winnerId: t.winnerId ?? null,
-        createdAt: t.createdAt instanceof Date ? t.createdAt.toISOString() : t.createdAt?._seconds ? new Date(t.createdAt._seconds * 1000).toISOString() : new Date().toISOString(),
-      };
-    });
+        createdAt,
+      }));
     return NextResponse.json({ ok: true, tournaments });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";

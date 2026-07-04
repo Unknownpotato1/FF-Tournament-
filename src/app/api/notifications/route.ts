@@ -10,24 +10,36 @@ export async function GET() {
     if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const db = getAdminDb();
+    // Fetch without orderBy (avoids composite index requirement), sort client-side
     const snap = await db
       .collection("notifications")
       .where("userId", "==", user.uid)
-      .orderBy("createdAt", "desc")
-      .limit(50)
+      .limit(100)
       .get();
 
-    const notifications = snap.docs.map((doc) => {
-      const n = doc.data();
-      return {
-        id: doc.id,
-        title: n.title,
-        message: n.message,
-        type: n.type,
-        read: n.read ?? false,
-        createdAt: n.createdAt instanceof Date ? n.createdAt.toISOString() : n.createdAt?._seconds ? new Date(n.createdAt._seconds * 1000).toISOString() : new Date().toISOString(),
-      };
-    });
+    const notifications = snap.docs
+      .map((doc) => {
+        const n = doc.data();
+        const createdAt = n.createdAt instanceof Date
+          ? n.createdAt.toISOString()
+          : n.createdAt?._seconds
+          ? new Date(n.createdAt._seconds * 1000).toISOString()
+          : new Date().toISOString();
+        return { doc, createdAt, ms: new Date(createdAt).getTime() };
+      })
+      .sort((a, b) => b.ms - a.ms)
+      .slice(0, 50)
+      .map(({ doc, createdAt }) => {
+        const n = doc.data();
+        return {
+          id: doc.id,
+          title: n.title,
+          message: n.message,
+          type: n.type,
+          read: n.read ?? false,
+          createdAt,
+        };
+      });
 
     return NextResponse.json({ ok: true, notifications });
   } catch (e) {
@@ -43,14 +55,17 @@ export async function POST() {
     if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const db = getAdminDb();
+    // Two separate where clauses need a composite index. Fetch by userId only,
+    // then filter client-side for read==false.
     const snap = await db
       .collection("notifications")
       .where("userId", "==", user.uid)
-      .where("read", "==", false)
       .get();
 
     const batch = db.batch();
-    snap.docs.forEach((doc) => batch.update(doc.ref, { read: true, readAt: FieldValue.serverTimestamp() }));
+    snap.docs
+      .filter((doc) => !(doc.data().read ?? false))
+      .forEach((doc) => batch.update(doc.ref, { read: true, readAt: FieldValue.serverTimestamp() }));
     await batch.commit();
 
     return NextResponse.json({ ok: true });

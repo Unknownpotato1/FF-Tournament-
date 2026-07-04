@@ -18,18 +18,40 @@ export async function GET() {
     }
     const leaderboard = lbSnap.exists ? lbSnap.data()! : { matchesPlayed: 0, wins: 0, prizeEarned: 0 };
 
+    // NOTE: Fetch without orderBy to avoid needing composite indexes. Sort client-side.
     const [regsSnap, paysSnap, notifsSnap, prizesSnap] = await Promise.all([
-      db.collection("registrations").where("userId", "==", user.uid).orderBy("createdAt", "desc").get(),
-      db.collection("paymentRequests").where("userId", "==", user.uid).orderBy("submittedAt", "desc").get(),
-      db.collection("notifications").where("userId", "==", user.uid).orderBy("createdAt", "desc").limit(30).get(),
-      db.collection("prizeHistory").where("userId", "==", user.uid).orderBy("createdAt", "desc").get(),
+      db.collection("registrations").where("userId", "==", user.uid).get(),
+      db.collection("paymentRequests").where("userId", "==", user.uid).get(),
+      db.collection("notifications").where("userId", "==", user.uid).limit(50).get(),
+      db.collection("prizeHistory").where("userId", "==", user.uid).get(),
     ]);
+
+    // Sort by date fields client-side (Firestore returns Timestamps)
+    const sortByDateDesc = (docs: FirebaseFirestore.QueryDocumentSnapshot[], field: string) =>
+      docs.sort((a, b) => {
+        const av = a.data()[field];
+        const bv = b.data()[field];
+        const aMs = av instanceof Date ? av.getTime() : av?._seconds ? av._seconds * 1000 : 0;
+        const bMs = bv instanceof Date ? bv.getTime() : bv?._seconds ? bv._seconds * 1000 : 0;
+        return bMs - aMs;
+      });
+
+    const sortedRegs = sortByDateDesc([...regsSnap.docs], "createdAt");
+    const sortedPays = sortByDateDesc([...paysSnap.docs], "submittedAt");
+    const sortedNotifs = sortByDateDesc([...notifsSnap.docs], "createdAt").slice(0, 30);
+    const sortedPrizes = sortByDateDesc([...prizesSnap.docs], "createdAt");
+
+    // Use sorted versions from here
+    const regDocs = sortedRegs;
+    const payDocs = sortedPays;
+    const notifDocs = sortedNotifs;
+    const prizeDocs = sortedPrizes;
 
     // Hydrate tournaments for registrations + payments + prize history
     const tournamentIds = new Set<string>();
-    regsSnap.docs.forEach((d) => tournamentIds.add(d.data().tournamentId));
-    paysSnap.docs.forEach((d) => tournamentIds.add(d.data().tournamentId));
-    prizesSnap.docs.forEach((d) => tournamentIds.add(d.data().tournamentId));
+    regDocs.forEach((d) => tournamentIds.add(d.data().tournamentId));
+    payDocs.forEach((d) => tournamentIds.add(d.data().tournamentId));
+    prizeDocs.forEach((d) => tournamentIds.add(d.data().tournamentId));
     const tSnaps = await Promise.all(
       [...tournamentIds].map((id) => db.collection("tournaments").doc(id).get())
     );
@@ -41,8 +63,8 @@ export async function GET() {
       return new Date().toISOString();
     };
 
-    const registrations = regsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const payments = paysSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const registrations = regDocs.map((d) => ({ id: d.id, ...d.data() }));
+    const payments = payDocs.map((d) => ({ id: d.id, ...d.data() }));
 
     const upcomingMatches = registrations
       .filter((r) => {
@@ -67,7 +89,7 @@ export async function GET() {
       });
 
     const prizeByTournament = new Map<string, number>();
-    prizesSnap.docs.forEach((d) => {
+    prizeDocs.forEach((d) => {
       const p = d.data();
       prizeByTournament.set(p.tournamentId, p.amount);
     });
@@ -112,7 +134,7 @@ export async function GET() {
           utrNumber: p.utrNumber,
         };
       }),
-      notifications: notifsSnap.docs.map((d) => {
+      notifications: notifDocs.map((d) => {
         const n = d.data();
         return {
           id: d.id,
@@ -123,7 +145,7 @@ export async function GET() {
           createdAt: toIso(n.createdAt),
         };
       }),
-      prizeHistory: prizesSnap.docs.map((d) => {
+      prizeHistory: prizeDocs.map((d) => {
         const p = d.data();
         const t = tMap.get(p.tournamentId) ?? { title: "Tournament", type: "1v1" };
         return {
