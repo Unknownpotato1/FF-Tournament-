@@ -22,6 +22,12 @@ export async function POST(req: Request) {
     }
 
     await db.runTransaction(async (tx) => {
+      // Firestore transactions require ALL reads BEFORE any writes.
+      // 1. Read registrations first
+      const regSnap = await tx.get(
+        db.collection("registrations").where("tournamentId", "==", tournamentId)
+      );
+      // 2. Then perform all writes
       tx.update(tRef, {
         status: "completed",
         winnerId,
@@ -45,11 +51,6 @@ export async function POST(req: Request) {
         { merge: true }
       );
 
-      // Notify all approved registrations
-      // Use single where + client-side filter to avoid composite index
-      const regSnap = await tx.get(
-        db.collection("registrations").where("tournamentId", "==", tournamentId)
-      );
       regSnap.forEach((regDoc) => {
         const reg = regDoc.data();
         if (reg.status !== "approved") return; // skip non-approved

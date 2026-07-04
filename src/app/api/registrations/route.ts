@@ -45,12 +45,28 @@ export async function POST(req: Request) {
     const autoRoomPublishAt = willFillTournament ? new Date(Date.now() + FIVE_MIN_MS) : null;
 
     await db.runTransaction(async (tx) => {
-      // Re-read tournament to ensure no race condition on slots
+      // Firestore transactions require ALL reads BEFORE any writes.
+      // 1. Read tournament (re-read to prevent race condition on slots)
       const freshTSnap = await tx.get(tRef);
       if (!freshTSnap.exists) throw new Error("Tournament vanished");
       const freshT = freshTSnap.data()!;
       if ((freshT.filledSlots ?? 0) >= (freshT.slotLimit ?? 0)) throw new Error("Tournament is full");
 
+      // 2. If this registration will fill the tournament, also read existing registrations
+      //    (must be done BEFORE any writes)
+      const willFill = (freshT.filledSlots ?? 0) + 1 >= (freshT.slotLimit ?? 0);
+      let approvedRegs: { userId: string }[] = [];
+      if (willFill) {
+        const approvedSnap = await tx.get(
+          db.collection("registrations").where("tournamentId", "==", tournamentId)
+        );
+        approvedRegs = approvedSnap.docs
+          .map((d) => d.data())
+          .filter((reg) => reg.status === "approved")
+          .map((reg) => ({ userId: reg.userId as string }));
+      }
+
+      // 3. Now perform ALL writes
       tx.set(db.collection("registrations").doc(regId), {
         userId: user.uid,
         tournamentId,
@@ -77,7 +93,7 @@ export async function POST(req: Request) {
         filledSlots: FieldValue.increment(1),
         updatedAt: FieldValue.serverTimestamp(),
       };
-      if ((freshT.filledSlots ?? 0) + 1 >= (freshT.slotLimit ?? 0)) {
+      if (willFill) {
         const now = Date.now();
         updates.autoRoomPublishAt = new Date(now + FIVE_MIN_MS);
         updates.autoStartAt = new Date(now + FIVE_MIN_MS);
@@ -93,16 +109,9 @@ export async function POST(req: Request) {
         createdAt: FieldValue.serverTimestamp(),
       });
 
-      // If this fills the tournament, notify admin (visible via admin stats)
-      // and notify all approved players that match starts in 5 min
-      if ((freshT.filledSlots ?? 0) + 1 >= (freshT.slotLimit ?? 0)) {
-        // This is inside transaction — fetch approved registrations
-        const approvedSnap = await tx.get(
-          db.collection("registrations").where("tournamentId", "==", tournamentId)
-        );
-        approvedSnap.forEach((regDoc) => {
-          const reg = regDoc.data();
-          if (reg.status !== "approved") return;
+      // If this fills the tournament, notify all approved players
+      if (willFill) {
+        for (const reg of approvedRegs) {
           tx.create(db.collection("notifications").doc(), {
             userId: reg.userId,
             title: "Match Starting Soon",
@@ -111,7 +120,7 @@ export async function POST(req: Request) {
             read: false,
             createdAt: FieldValue.serverTimestamp(),
           });
-        });
+        }
       }
     });
 
