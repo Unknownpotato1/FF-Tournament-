@@ -1,9 +1,15 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  type User as FirebaseUser,
+} from "firebase/auth";
+import { getFirebaseAuth, googleProvider } from "@/lib/firebase-client";
 
 export type AppUser = {
-  id: string;
   uid: string;
   name: string;
   email: string;
@@ -16,7 +22,6 @@ type AuthContextType = {
   user: AppUser | null;
   loading: boolean;
   loginWithGoogle: () => Promise<{ ok: boolean; error?: string }>;
-  loginWithEmail: (email: string, name: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -27,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Restore session from server on mount
   const refresh = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/me", { cache: "no-store" });
@@ -48,38 +54,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const loginWithGoogle = useCallback(async () => {
-    const res = await fetch("/api/auth/google", { method: "POST" });
-    const data = await res.json();
-    if (data.ok) {
-      setUser(data.user);
-      return { ok: true };
+    try {
+      const auth = getFirebaseAuth();
+      const result = await signInWithPopup(auth, googleProvider);
+      const fbUser: FirebaseUser = result.user;
+      // Get ID token and exchange for session cookie
+      const idToken = await fbUser.getIdToken();
+      const res = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setUser(data.user);
+        return { ok: true };
+      }
+      return { ok: false, error: data.error };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Login failed";
+      return { ok: false, error: msg };
     }
-    return { ok: false, error: data.error };
-  }, []);
-
-  const loginWithEmail = useCallback(async (email: string, name: string) => {
-    const res = await fetch("/api/auth/email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      setUser(data.user);
-      return { ok: true };
-    }
-    return { ok: false, error: data.error };
   }, []);
 
   const logout = useCallback(async () => {
+    try {
+      // Sign out from Firebase client
+      const auth = getFirebaseAuth();
+      await firebaseSignOut(auth);
+    } catch {
+      // ignore if not signed in client-side
+    }
     await fetch("/api/auth/logout", { method: "POST" });
     setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{ user, loading, loginWithGoogle, loginWithEmail, logout, refresh }}
-    >
+    <AuthContext.Provider value={{ user, loading, loginWithGoogle, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );

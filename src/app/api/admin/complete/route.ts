@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAdmin } from "@/lib/auth";
+import { FieldValue } from "firebase-admin/firestore";
 
-// POST /api/admin/complete — mark tournament completed, select winner, enter prize
+// POST /api/admin/complete — mark tournament completed + select winner + enter prize
 export async function POST(req: Request) {
   try {
     await requireAdmin();
@@ -11,42 +12,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing fields" }, { status: 400 });
     }
 
-    const tournament = await db.tournament.findUnique({ where: { id: tournamentId } });
-    if (!tournament) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    const db = getAdminDb();
+    const tRef = db.collection("tournaments").doc(tournamentId);
+    const tSnap = await tRef.get();
+    if (!tSnap.exists) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+    const tournament = tSnap.data()!;
     if (tournament.status === "completed") {
       return NextResponse.json({ ok: false, error: "Already completed" }, { status: 400 });
     }
 
-    await db.$transaction(async (tx) => {
-      await tx.tournament.update({
-        where: { id: tournamentId },
-        data: { status: "completed", winnerId },
+    await db.runTransaction(async (tx) => {
+      tx.update(tRef, {
+        status: "completed",
+        winnerId,
+        updatedAt: FieldValue.serverTimestamp(),
       });
-      await tx.prizeHistory.create({
-        data: { userId: winnerId, tournamentId, amount: Number(prizeAmount) },
+
+      tx.create(db.collection("prizeHistory").doc(), {
+        userId: winnerId,
+        tournamentId,
+        amount: Number(prizeAmount),
+        createdAt: FieldValue.serverTimestamp(),
       });
-      const lb = await tx.leaderboard.findUnique({ where: { userId: winnerId } });
-      if (lb) {
-        await tx.leaderboard.update({
-          where: { userId: winnerId },
-          data: { wins: { increment: 1 }, prizeEarned: { increment: Number(prizeAmount) } },
-        });
-      } else {
-        await tx.leaderboard.create({
-          data: { userId: winnerId, wins: 1, prizeEarned: Number(prizeAmount) },
-        });
-      }
+
+      tx.set(
+        db.collection("leaderboard").doc(winnerId),
+        {
+          userId: winnerId,
+          wins: FieldValue.increment(1),
+          prizeEarned: FieldValue.increment(Number(prizeAmount)),
+        },
+        { merge: true }
+      );
+
       // Notify all approved registrations
-      const approved = await tx.registration.findMany({
-        where: { tournamentId, status: "approved" },
-      });
-      await tx.notification.createMany({
-        data: approved.map((r) => ({
-          userId: r.userId,
+      const approvedSnap = await tx.get(
+        db.collection("registrations").where("tournamentId", "==", tournamentId).where("status", "==", "approved")
+      );
+      approvedSnap.forEach((regDoc) => {
+        const reg = regDoc.data();
+        tx.create(db.collection("notifications").doc(), {
+          userId: reg.userId,
           title: "Tournament Completed",
           message: `${tournament.title} has ended. Check the leaderboard to see the winner!`,
           type: "tournament_completed",
-        })),
+          read: false,
+          createdAt: FieldValue.serverTimestamp(),
+        });
       });
     });
 

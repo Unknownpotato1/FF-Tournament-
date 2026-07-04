@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useUI } from "@/stores/ui-store";
+import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,14 +21,14 @@ import {
   Copy,
   Check,
   Upload,
-  FileImage,
   Loader2,
   ArrowLeft,
-  QrCode,
   Info,
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getStorageRef, getFirebaseAuth } from "@/lib/firebase-client";
 
 type Tournament = {
   id: string;
@@ -56,9 +57,12 @@ export function PaymentModal() {
   const [utr, setUtr] = useState("");
   const [note, setNote] = useState("");
   const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
 
   const UPI_ID = "fftournament@upi";
   const PAYEE_NAME = "FF Tournament";
@@ -71,16 +75,51 @@ export function PaymentModal() {
     toast.success("UPI ID copied to clipboard");
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
       toast.error("File too large", { description: "Max 2MB allowed" });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => setScreenshot(reader.result as string);
-    reader.readAsDataURL(file);
+    if (!file.type.startsWith("image/")) {
+      toast.error("Invalid file", { description: "Please upload an image (PNG, JPG)" });
+      return;
+    }
+    if (!user) {
+      toast.error("Please login first");
+      return;
+    }
+
+    // Show preview immediately
+    const previewUrl = URL.createObjectURL(file);
+    setScreenshotPreview(previewUrl);
+
+    // Upload to Firebase Storage
+    setUploading(true);
+    try {
+      const storage = getStorageRef();
+      const auth = getFirebaseAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        toast.error("Session expired — please login again");
+        setUploading(false);
+        return;
+      }
+      const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+      const path = `payments/${user.uid}/${Date.now()}-${safeName}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file, { contentType: file.type });
+      const downloadURL = await getDownloadURL(storageRef);
+      setScreenshot(downloadURL);
+      toast.success("Screenshot uploaded");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      toast.error("Upload failed", { description: msg });
+      setScreenshotPreview(null);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -114,6 +153,7 @@ export function PaymentModal() {
         setUtr("");
         setNote("");
         setScreenshot(null);
+        setScreenshotPreview(null);
         closeModal();
         openModal("dashboard");
       } else {
@@ -232,16 +272,32 @@ export function PaymentModal() {
                 onChange={handleFileChange}
                 className="hidden"
               />
-              {screenshot ? (
+              {screenshotPreview ? (
                 <div className="relative rounded-lg overflow-hidden glass-card">
-                  <img src={screenshot} alt="Payment screenshot" className="w-full h-40 object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => setScreenshot(null)}
-                    className="absolute top-2 right-2 px-2 py-1 rounded-full bg-black/70 text-white text-xs"
-                  >
-                    Remove
-                  </button>
+                  <img src={screenshotPreview} alt="Payment screenshot" className="w-full h-40 object-cover" />
+                  {uploading && (
+                    <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="w-6 h-6 text-[#00ff9d] animate-spin" />
+                      <span className="text-xs text-white">Uploading...</span>
+                    </div>
+                  )}
+                  {!uploading && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScreenshot(null);
+                        setScreenshotPreview(null);
+                      }}
+                      className="absolute top-2 right-2 px-2 py-1 rounded-full bg-black/70 text-white text-xs hover:bg-red-500/70"
+                    >
+                      Remove
+                    </button>
+                  )}
+                  {!uploading && screenshot && (
+                    <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-[#00ff9d]/90 text-black text-[10px] font-bold flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Uploaded
+                    </div>
+                  )}
                 </div>
               ) : (
                 <button
@@ -251,7 +307,7 @@ export function PaymentModal() {
                 >
                   <Upload className="w-6 h-6" />
                   <span className="text-xs font-medium">Tap to upload screenshot</span>
-                  <span className="text-[10px]">PNG, JPG up to 2MB</span>
+                  <span className="text-[10px]">PNG, JPG up to 2MB · Stored in Firebase Storage</span>
                 </button>
               )}
             </div>

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAdmin } from "@/lib/auth";
+import { FieldValue } from "firebase-admin/firestore";
 
-// POST /api/admin/rooms — publish room details for a tournament
+// POST /api/admin/rooms — publish room details
 export async function POST(req: Request) {
   try {
     await requireAdmin();
@@ -10,26 +11,36 @@ export async function POST(req: Request) {
     if (!tournamentId || !roomId || !roomPassword) {
       return NextResponse.json({ ok: false, error: "Missing fields" }, { status: 400 });
     }
-    await db.tournament.update({
-      where: { id: tournamentId },
-      data: { roomId, roomPassword, roomPublished: true },
-    });
+    const db = getAdminDb();
+    const tRef = db.collection("tournaments").doc(tournamentId);
+    const tSnap = await tRef.get();
+    if (!tSnap.exists) return NextResponse.json({ ok: false, error: "Tournament not found" }, { status: 404 });
+    const tournament = tSnap.data()!;
 
-    // Notify all approved registrations
-    const approvedRegs = await db.registration.findMany({
-      where: { tournamentId, status: "approved" },
-    });
-    const tournament = await db.tournament.findUnique({ where: { id: tournamentId } });
-    if (tournament) {
-      await db.notification.createMany({
-        data: approvedRegs.map((r) => ({
-          userId: r.userId,
+    await db.runTransaction(async (tx) => {
+      tx.update(tRef, {
+        roomId,
+        roomPassword,
+        roomPublished: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      // Notify all approved registrations
+      const approvedSnap = await tx.get(
+        db.collection("registrations").where("tournamentId", "==", tournamentId).where("status", "==", "approved")
+      );
+      approvedSnap.forEach((regDoc) => {
+        const reg = regDoc.data();
+        tx.create(db.collection("notifications").doc(), {
+          userId: reg.userId,
           title: "Room Details Published",
           message: `Room ID & Password for ${tournament.title} are now available in your dashboard.`,
           type: "room_published",
-        })),
+          read: false,
+          createdAt: FieldValue.serverTimestamp(),
+        });
       });
-    }
+    });
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";

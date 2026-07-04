@@ -1,24 +1,37 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { getAdminDb } from "@/lib/firebase-admin";
 import { DEMO_STATS } from "@/lib/constants";
 
-// GET /api/stats — homepage animated counters
+// GET /api/stats — homepage animated counters (demo baseline + real db counts)
 export async function GET() {
-  const [registeredPlayers, matchesPlayedAgg, winnersAgg, prizeAgg] = await Promise.all([
-    db.user.count(),
-    db.leaderboard.aggregate({ _sum: { matchesPlayed: true } }),
-    db.leaderboard.aggregate({ _sum: { wins: true } }),
-    db.leaderboard.aggregate({ _sum: { prizeEarned: true } }),
-  ]);
+  try {
+    const db = getAdminDb();
+    const [usersSnap, lbSnap] = await Promise.all([
+      db.collection("users").count().get(),
+      db.collection("leaderboard").get(),
+    ]);
 
-  // Use demo baseline + real db counts so homepage always feels alive
-  return NextResponse.json({
-    ok: true,
-    stats: {
-      registeredPlayers: DEMO_STATS.registeredPlayers + registeredPlayers,
-      matchesPlayed: DEMO_STATS.matchesPlayed + (matchesPlayedAgg._sum.matchesPlayed ?? 0),
-      winners: DEMO_STATS.winners + (winnersAgg._sum.wins ?? 0),
-      prizePool: DEMO_STATS.prizePool + (prizeAgg._sum.prizeEarned ?? 0),
-    },
-  });
+    let matchesPlayed = 0;
+    let wins = 0;
+    let prizeEarned = 0;
+    lbSnap.forEach((doc) => {
+      const l = doc.data();
+      matchesPlayed += l.matchesPlayed ?? 0;
+      wins += l.wins ?? 0;
+      prizeEarned += l.prizeEarned ?? 0;
+    });
+
+    return NextResponse.json({
+      ok: true,
+      stats: {
+        registeredPlayers: DEMO_STATS.registeredPlayers + usersSnap.data().count,
+        matchesPlayed: DEMO_STATS.matchesPlayed + matchesPlayed,
+        winners: DEMO_STATS.winners + wins,
+        prizePool: DEMO_STATS.prizePool + prizeEarned,
+      },
+    });
+  } catch (e) {
+    // Fail gracefully — homepage should still render
+    return NextResponse.json({ ok: true, stats: DEMO_STATS });
+  }
 }

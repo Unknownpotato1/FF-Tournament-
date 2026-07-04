@@ -1,39 +1,43 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { getAdminDb } from "@/lib/firebase-admin";
 
 // GET /api/leaderboard — top winners, most matches, highest prize
 export async function GET() {
-  const top = await db.leaderboard.findMany({
-    orderBy: [{ wins: "desc" }, { prizeEarned: "desc" }],
-    take: 20,
-    include: { user: { select: { name: true, photoURL: true, email: true } } },
-  });
+  try {
+    const db = getAdminDb();
+    const snap = await db
+      .collection("leaderboard")
+      .orderBy("wins", "desc")
+      .orderBy("prizeEarned", "desc")
+      .limit(20)
+      .get();
 
-  const byMatches = [...top].sort((a, b) => b.matchesPlayed - a.matchesPlayed).slice(0, 10);
-  const byPrize = [...top].sort((a, b) => b.prizeEarned - a.prizeEarned).slice(0, 10);
+    // Hydrate user info
+    const userIds = snap.docs.map((d) => d.id);
+    const userSnaps = await Promise.all(userIds.map((id) => db.collection("users").doc(id).get()));
+    const userMap = new Map(userSnaps.filter((s) => s.exists).map((s) => [s.id, s.data()!]));
 
-  return NextResponse.json({
-    ok: true,
-    topWinners: top.slice(0, 10).map((l, i) => ({
-      rank: i + 1,
-      userId: l.userId,
-      name: l.user.name,
-      photoURL: l.user.photoURL,
-      wins: l.wins,
-      matchesPlayed: l.matchesPlayed,
-      prizeEarned: l.prizeEarned,
-    })),
-    byMatches: byMatches.map((l, i) => ({
-      rank: i + 1,
-      name: l.user.name,
-      photoURL: l.user.photoURL,
-      matchesPlayed: l.matchesPlayed,
-    })),
-    byPrize: byPrize.map((l, i) => ({
-      rank: i + 1,
-      name: l.user.name,
-      photoURL: l.user.photoURL,
-      prizeEarned: l.prizeEarned,
-    })),
-  });
+    const all = snap.docs.map((doc) => {
+      const l = doc.data();
+      const u = userMap.get(doc.id) ?? {};
+      return {
+        userId: doc.id,
+        name: u.name ?? "Player",
+        photoURL: u.photoURL ?? null,
+        matchesPlayed: l.matchesPlayed ?? 0,
+        wins: l.wins ?? 0,
+        prizeEarned: l.prizeEarned ?? 0,
+      };
+    });
+
+    return NextResponse.json({
+      ok: true,
+      topWinners: all.slice(0, 10).map((l, i) => ({ rank: i + 1, ...l })),
+      byMatches: [...all].sort((a, b) => b.matchesPlayed - a.matchesPlayed).slice(0, 10).map((l, i) => ({ rank: i + 1, name: l.name, photoURL: l.photoURL, matchesPlayed: l.matchesPlayed })),
+      byPrize: [...all].sort((a, b) => b.prizeEarned - a.prizeEarned).slice(0, 10).map((l, i) => ({ rank: i + 1, name: l.name, photoURL: l.photoURL, prizeEarned: l.prizeEarned })),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
 }

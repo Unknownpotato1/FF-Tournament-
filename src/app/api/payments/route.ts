@@ -1,108 +1,118 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { getAdminDb } from "@/lib/firebase-admin";
 import { getCurrentUser, requireAdmin } from "@/lib/auth";
+import { FieldValue } from "firebase-admin/firestore";
 
 // GET /api/payments — list payments (admin: all; user: own)
 export async function GET(req: Request) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-  const { searchParams } = new URL(req.url);
-  const status = searchParams.get("status"); // pending | approved | rejected
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get("status");
 
-  let where: Record<string, unknown> = {};
-  if (user.role === "admin") {
-    if (status) where.status = status;
-  } else {
-    where.userId = user.id;
-    if (status) where.status = status;
+    const db = getAdminDb();
+    let q;
+    if (user.role === "admin") {
+      q = db.collection("paymentRequests").orderBy("submittedAt", "desc");
+    } else {
+      q = db.collection("paymentRequests").where("userId", "==", user.uid).orderBy("submittedAt", "desc");
+    }
+    if (status) q = q.where("status", "==", status);
+
+    const snap = await q.limit(100).get();
+
+    // Hydrate user + tournament info
+    const userIds = [...new Set(snap.docs.map((d) => d.data().userId))];
+    const tournamentIds = [...new Set(snap.docs.map((d) => d.data().tournamentId))];
+    const [userSnaps, tSnaps] = await Promise.all([
+      Promise.all(userIds.map((id) => db.collection("users").doc(id).get())),
+      Promise.all(tournamentIds.map((id) => db.collection("tournaments").doc(id).get())),
+    ]);
+    const userMap = new Map(userSnaps.filter((s) => s.exists).map((s) => [s.id, s.data()!]));
+    const tMap = new Map(tSnaps.filter((s) => s.exists).map((s) => [s.id, s.data()!]));
+
+    const payments = snap.docs.map((doc) => {
+      const p = doc.data();
+      const pu = userMap.get(p.userId) ?? {};
+      const pt = tMap.get(p.tournamentId) ?? {};
+      return {
+        id: doc.id,
+        userId: p.userId,
+        userName: pu.name ?? "Unknown",
+        userEmail: pu.email ?? "",
+        userPhoto: pu.photoURL ?? null,
+        tournamentId: p.tournamentId,
+        tournamentTitle: pt.title ?? "Unknown",
+        tournamentType: pt.type ?? "1v1",
+        matchDate: pt.date instanceof Date ? pt.date.toISOString() : pt.date?._seconds ? new Date(pt.date._seconds * 1000).toISOString() : new Date().toISOString(),
+        matchTime: pt.time ?? "",
+        screenshotURL: p.screenshotURL,
+        utrNumber: p.utrNumber,
+        amount: p.amount,
+        note: p.note,
+        status: p.status,
+        submittedAt: p.submittedAt instanceof Date ? p.submittedAt.toISOString() : p.submittedAt?._seconds ? new Date(p.submittedAt._seconds * 1000).toISOString() : new Date().toISOString(),
+        reviewedAt: p.reviewedAt instanceof Date ? p.reviewedAt.toISOString() : p.reviewedAt?._seconds ? new Date(p.reviewedAt._seconds * 1000).toISOString() : null,
+      };
+    });
+
+    return NextResponse.json({ ok: true, payments });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
-
-  const payments = await db.paymentRequest.findMany({
-    where,
-    orderBy: { submittedAt: "desc" },
-    include: {
-      user: { select: { id: true, name: true, email: true, photoURL: true } },
-      tournament: { select: { id: true, title: true, type: true, date: true, time: true } },
-    },
-  });
-
-  return NextResponse.json({
-    ok: true,
-    payments: payments.map((p) => ({
-      id: p.id,
-      userId: p.userId,
-      userName: p.user.name,
-      userEmail: p.user.email,
-      userPhoto: p.user.photoURL,
-      tournamentId: p.tournamentId,
-      tournamentTitle: p.tournament.title,
-      tournamentType: p.tournament.type,
-      matchDate: p.tournament.date.toISOString(),
-      matchTime: p.tournament.time,
-      screenshotURL: p.screenshotURL,
-      utrNumber: p.utrNumber,
-      amount: p.amount,
-      note: p.note,
-      status: p.status,
-      submittedAt: p.submittedAt.toISOString(),
-      reviewedAt: p.reviewedAt?.toISOString() ?? null,
-    })),
-  });
 }
 
-// POST /api/payments/verify — admin verifies a payment
+// POST /api/payments — admin verifies a payment { paymentId, action: "approve"|"reject" }
 export async function POST(req: Request) {
   try {
-    const admin = await requireAdmin();
-    const { paymentId, action } = await req.json(); // action: "approve" | "reject"
+    await requireAdmin();
+    const { paymentId, action } = await req.json();
     if (!paymentId || !["approve", "reject"].includes(action)) {
       return NextResponse.json({ ok: false, error: "Invalid request" }, { status: 400 });
     }
 
-    const payment = await db.paymentRequest.findUnique({
-      where: { id: paymentId },
-      include: { tournament: true, user: true },
-    });
-    if (!payment) return NextResponse.json({ ok: false, error: "Payment not found" }, { status: 404 });
-    if (payment.status !== "pending") {
-      return NextResponse.json({ ok: false, error: "Already reviewed" }, { status: 400 });
-    }
+    const db = getAdminDb();
+    const payRef = db.collection("paymentRequests").doc(paymentId);
+    const paySnap = await payRef.get();
+    if (!paySnap.exists) return NextResponse.json({ ok: false, error: "Payment not found" }, { status: 404 });
+    const payment = paySnap.data()!;
+    if (payment.status !== "pending") return NextResponse.json({ ok: false, error: "Already reviewed" }, { status: 400 });
 
     const newStatus = action === "approve" ? "approved" : "rejected";
 
-    await db.$transaction(async (tx) => {
-      await tx.paymentRequest.update({
-        where: { id: paymentId },
-        data: { status: newStatus, reviewedAt: new Date() },
+    await db.runTransaction(async (tx) => {
+      const tSnap = await tx.get(db.collection("tournaments").doc(payment.tournamentId));
+      const tournament = tSnap.exists ? tSnap.data()! : { title: "Tournament" };
+
+      tx.update(payRef, {
+        status: newStatus,
+        reviewedAt: FieldValue.serverTimestamp(),
       });
-      await tx.registration.update({
-        where: { id: payment.registrationId },
-        data: { status: newStatus },
+      tx.update(db.collection("registrations").doc(payment.registrationId), {
+        status: newStatus,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      tx.create(db.collection("notifications").doc(), {
+        userId: payment.userId,
+        title: action === "approve" ? "Payment Approved" : "Payment Rejected",
+        message:
+          action === "approve"
+            ? `Your payment for ${tournament.title} has been approved. Room details will appear in your dashboard soon.`
+            : `Your payment for ${tournament.title} was rejected. Please contact support if you believe this is an error.`,
+        type: action === "approve" ? "payment_approved" : "payment_rejected",
+        read: false,
+        createdAt: FieldValue.serverTimestamp(),
       });
 
-      // Notify user
-      await tx.notification.create({
-        data: {
-          userId: payment.userId,
-          title: action === "approve" ? "Payment Approved" : "Payment Rejected",
-          message:
-            action === "approve"
-              ? `Your payment for ${payment.tournament.title} has been approved. Room details will appear in your dashboard soon.`
-              : `Your payment for ${payment.tournament.title} was rejected. Please contact support if you believe this is an error.`,
-          type: action === "approve" ? "payment_approved" : "payment_rejected",
-        },
-      });
-
-      // Update leaderboard matchesPlayed only on approval
       if (action === "approve") {
-        const lb = await tx.leaderboard.findUnique({ where: { userId: payment.userId } });
-        if (lb) {
-          await tx.leaderboard.update({
-            where: { userId: payment.userId },
-            data: { matchesPlayed: { increment: 1 } },
-          });
-        }
+        tx.set(
+          db.collection("leaderboard").doc(payment.userId),
+          { userId: payment.userId, matchesPlayed: FieldValue.increment(1) },
+          { merge: true }
+        );
       }
     });
 
