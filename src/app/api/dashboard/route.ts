@@ -69,9 +69,11 @@ export async function GET() {
     const upcomingMatches = registrations
       .filter((r) => {
         const t = tMap.get(r.tournamentId);
-        if (!t || t.status !== "active" || r.status !== "approved") return false;
-        const matchDate = new Date(toIso(t.date));
-        return matchDate.getTime() >= Date.now() - 86400000;
+        if (!t) return false;
+        // Show active or started tournaments where user is approved
+        if (t.status !== "active" && t.status !== "started") return false;
+        if (r.status !== "approved") return false;
+        return true;
       })
       .map((r) => {
         const t = tMap.get(r.tournamentId)!;
@@ -80,8 +82,14 @@ export async function GET() {
           tournamentId: r.tournamentId,
           title: t.title,
           type: t.type,
-          date: toIso(t.date),
-          time: t.time,
+          autoStartAt: t.autoStartAt
+            ? (t.autoStartAt instanceof Date
+                ? t.autoStartAt.toISOString()
+                : t.autoStartAt?._seconds
+                ? new Date(t.autoStartAt._seconds * 1000).toISOString()
+                : null)
+            : null,
+          status: t.status,
           roomPublished: t.roomPublished ?? false,
           roomId: t.roomPublished ? t.roomId ?? null : null,
           roomPassword: t.roomPublished ? t.roomPassword ?? null : null,
@@ -111,14 +119,12 @@ export async function GET() {
       },
       upcomingMatches,
       joinedTournaments: registrations.map((r) => {
-        const t = tMap.get(r.tournamentId) ?? { title: "Unknown", type: "1v1", date: new Date(), time: "", status: "active" };
+        const t = tMap.get(r.tournamentId) ?? { title: "Unknown", type: "1v1", status: "active" };
         return {
           id: r.id,
           tournamentId: r.tournamentId,
           title: t.title,
           type: t.type,
-          date: toIso(t.date),
-          time: t.time,
           status: r.status,
           tournamentStatus: t.status,
         };
@@ -163,11 +169,19 @@ export async function GET() {
         })
         .map((r) => {
           const t = tMap.get(r.tournamentId)!;
+          // Use tournament's createdAt as the "completed date" fallback (real completedAt isn't tracked)
+          const completedDate = t.updatedAt
+            ? (t.updatedAt instanceof Date
+                ? t.updatedAt.toISOString()
+                : t.updatedAt?._seconds
+                ? new Date(t.updatedAt._seconds * 1000).toISOString()
+                : new Date().toISOString())
+            : new Date().toISOString();
           return {
             id: r.id,
             title: t.title,
             type: t.type,
-            date: toIso(t.date),
+            date: completedDate,
             result: t.winnerId === user.uid ? "Won" : "Lost",
             prize: t.winnerId === user.uid ? prizeByTournament.get(r.tournamentId) ?? 0 : 0,
           };

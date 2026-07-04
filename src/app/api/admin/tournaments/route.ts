@@ -22,24 +22,36 @@ export async function GET() {
         return { id: doc.id, t, createdAt, ms: new Date(createdAt).getTime() };
       })
       .sort((a, b) => b.ms - a.ms)
-      .map(({ id, t, createdAt }) => ({
-        id,
-        type: t.type,
-        title: t.title,
-        entryFee: t.entryFee,
-        prizeAmount: t.prizeAmount,
-        slotLimit: t.slotLimit,
-        filledSlots: t.filledSlots ?? 0,
-        date: t.date instanceof Date ? t.date.toISOString() : t.date?._seconds ? new Date(t.date._seconds * 1000).toISOString() : new Date().toISOString(),
-        time: t.time,
-        status: t.status,
-        roomPublished: t.roomPublished ?? false,
-        roomId: t.roomId ?? null,
-        roomPassword: t.roomPassword ?? null,
-        rules: t.rules,
-        winnerId: t.winnerId ?? null,
-        createdAt,
-      }));
+      .map(({ id, t, createdAt }) => {
+        const toIsoOrNull = (v: unknown): string | null => {
+          if (!v) return null;
+          if (v instanceof Date) return v.toISOString();
+          if (v && typeof v === "object" && "_seconds" in v) return new Date((v as { _seconds: number })._seconds * 1000).toISOString();
+          return null;
+        };
+        return {
+          id,
+          type: t.type,
+          title: t.title,
+          entryFee: t.entryFee,
+          prizeAmount: t.prizeAmount,
+          slotLimit: t.slotLimit,
+          filledSlots: t.filledSlots ?? 0,
+          // Legacy fields (kept for backward compat with old data, but no longer used)
+          date: toIsoOrNull(t.date) ?? null,
+          time: t.time ?? null,
+          // New auto-start fields
+          autoStartAt: toIsoOrNull(t.autoStartAt),
+          autoRoomPublishAt: toIsoOrNull(t.autoRoomPublishAt),
+          status: t.status,
+          roomPublished: t.roomPublished ?? false,
+          roomId: t.roomId ?? null,
+          roomPassword: t.roomPassword ?? null,
+          rules: t.rules,
+          winnerId: t.winnerId ?? null,
+          createdAt,
+        };
+      });
     return NextResponse.json({ ok: true, tournaments });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
@@ -48,14 +60,14 @@ export async function GET() {
   }
 }
 
-// POST — create tournament
+// POST — create tournament (slot-based auto-start, no date/time needed)
 export async function POST(req: Request) {
   try {
     await requireAdmin();
     const body = await req.json();
-    const { type, title, entryFee, prizeAmount, slotLimit, date, time, rules, roomId, roomPassword } = body;
-    if (!type || !title || !entryFee || !prizeAmount || !slotLimit || !date || !time) {
-      return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
+    const { type, title, entryFee, prizeAmount, slotLimit, rules, roomId, roomPassword } = body;
+    if (!type || !title || !entryFee || !prizeAmount || !slotLimit) {
+      return NextResponse.json({ ok: false, error: "Missing required fields (type, title, entryFee, prizeAmount, slotLimit)" }, { status: 400 });
     }
     const db = getAdminDb();
     const ref = await db.collection("tournaments").add({
@@ -65,12 +77,16 @@ export async function POST(req: Request) {
       prizeAmount: Number(prizeAmount),
       slotLimit: Number(slotLimit),
       filledSlots: 0,
-      date: new Date(date),
-      time,
-      rules: rules ?? "Standard Free Fire Clash Squad rules apply. No hacking, no teaming, fair play only.",
+      // Slot-based auto-start: tournament starts when slots fill,
+      // room details auto-published 5 mins after slots fill.
+      // autoStartAt + autoRoomPublishAt are set when last slot fills.
+      autoStartAt: null,
+      autoRoomPublishAt: null,
+      rules: rules ?? "Standard Free Fire Clash Squad rules apply. No hacking, no teaming, fair play only. Tournament starts automatically when all slots are filled.",
       roomId: roomId ?? null,
       roomPassword: roomPassword ?? null,
       roomPublished: false,
+      // status: "active" (open for registration) | "started" (slots full, room published, in progress) | "completed" | "cancelled"
       status: "active",
       winnerId: null,
       createdAt: FieldValue.serverTimestamp(),
@@ -91,8 +107,11 @@ export async function PUT(req: Request) {
     const { id, ...updates } = await req.json();
     if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
 
+    // Strip date/time if client sends them (legacy support)
+    delete updates.date;
+    delete updates.time;
+
     const data: Record<string, unknown> = { ...updates, updatedAt: FieldValue.serverTimestamp() };
-    if (updates.date) data.date = new Date(updates.date);
     if (updates.entryFee !== undefined) data.entryFee = Number(updates.entryFee);
     if (updates.prizeAmount !== undefined) data.prizeAmount = Number(updates.prizeAmount);
     if (updates.slotLimit !== undefined) data.slotLimit = Number(updates.slotLimit);

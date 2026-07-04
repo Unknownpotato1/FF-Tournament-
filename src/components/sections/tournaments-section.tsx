@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { Trophy, Users, Clock, Calendar, IndianRupee, Zap, Swords } from "lucide-react";
+import { Trophy, Users, Clock, IndianRupee, Zap, Swords } from "lucide-react";
 import { useUI } from "@/stores/ui-store";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -15,8 +15,8 @@ type Tournament = {
   slotLimit: number;
   filledSlots: number;
   remainingSlots: number;
-  date: string;
-  time: string;
+  autoStartAt: string | null;
+  autoRoomPublishAt: string | null;
   status: string;
   rules: string;
 };
@@ -46,10 +46,10 @@ function TournamentCardSkeleton() {
 
 function TournamentCard({ t, index }: { t: Tournament; index: number }) {
   const { openModal } = useUI();
-  const date = new Date(t.date);
-  const dateStr = date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   const fillPercent = Math.min(100, Math.round((t.filledSlots / t.slotLimit) * 100));
-  const isAlmostFull = t.remainingSlots <= 5;
+  const isAlmostFull = t.remainingSlots <= 5 && t.remainingSlots > 0;
+  const isFull = t.remainingSlots === 0;
+  const isStarted = t.status === "started";
 
   return (
     <motion.div
@@ -71,7 +71,15 @@ function TournamentCard({ t, index }: { t: Tournament; index: number }) {
           >
             {t.type === "1v1" ? "1v1 CLASH" : "2v2 CLASH"}
           </div>
-          <span className="status-badge status-active">● Active</span>
+          {isStarted ? (
+            <span className="status-badge status-active" style={{ background: "rgba(255,107,26,0.15)", color: "#ff6b1a", borderColor: "rgba(255,107,26,0.3)" }}>
+              🎮 In Progress
+            </span>
+          ) : isFull ? (
+            <span className="status-badge status-completed">Slots Full</span>
+          ) : (
+            <span className="status-badge status-active">● Open</span>
+          )}
         </div>
         {isAlmostFull && (
           <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 text-[10px] font-bold border border-red-500/30">
@@ -120,22 +128,40 @@ function TournamentCard({ t, index }: { t: Tournament; index: number }) {
         </div>
       </div>
 
-      {/* Date & Time */}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4">
-        <span className="flex items-center gap-1">
-          <Calendar className="w-3.5 h-3.5 text-[#00ff9d]" /> {dateStr}
-        </span>
-        <span className="flex items-center gap-1">
-          <Clock className="w-3.5 h-3.5 text-[#ff6b1a]" /> {t.time}
-        </span>
+      {/* Auto-start info */}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4">
+        {isStarted ? (
+          <span className="flex items-center gap-1.5 text-[#ff6b1a] font-semibold">
+            <Swords className="w-3.5 h-3.5" /> Match in progress
+          </span>
+        ) : isFull ? (
+          <span className="flex items-center gap-1.5 text-[#ff6b1a]">
+            <Clock className="w-3.5 h-3.5" /> Starting in 5 min...
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 text-[#00ff9d]">
+            <Zap className="w-3.5 h-3.5" /> Auto-starts when slots fill
+          </span>
+        )}
       </div>
 
       {/* CTA */}
       <button
         onClick={() => openModal("tournamentDetails", t.id)}
-        className="btn-glow-green rounded-full py-2.5 text-sm font-bold w-full mt-auto flex items-center justify-center gap-2"
+        disabled={isFull || isStarted}
+        className={`rounded-full py-2.5 text-sm font-bold w-full mt-auto flex items-center justify-center gap-2 ${
+          isFull || isStarted
+            ? "bg-white/5 text-muted-foreground cursor-not-allowed"
+            : "btn-glow-green"
+        }`}
       >
-        <Swords className="w-4 h-4" /> Join Now
+        {isStarted ? (
+          <><Swords className="w-4 h-4" /> In Progress</>
+        ) : isFull ? (
+          <><Clock className="w-4 h-4" /> Starting Soon</>
+        ) : (
+          <><Swords className="w-4 h-4" /> Join Now</>
+        )}
       </button>
     </motion.div>
   );

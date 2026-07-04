@@ -233,8 +233,19 @@ export function DashboardModal() {
                           <div className="text-[10px] text-[#00ff9d] uppercase tracking-wider">{m.type === "1v1" ? "1v1" : "2v2"}</div>
                           <div className="font-bold text-white text-sm">{m.title}</div>
                         </div>
-                        <div className="text-right text-xs text-muted-foreground">
-                          {new Date(m.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} · {m.time}
+                        <div className="text-right text-xs">
+                          {m.status === "started" ? (
+                            <span className="text-[#ff6b1a] font-bold flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#ff6b1a] animate-pulse" />
+                              LIVE
+                            </span>
+                          ) : m.autoStartAt ? (
+                            <span className="text-[#ff6b1a]">
+                              Starts {new Date(m.autoStartAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">Auto-starts when full</span>
+                          )}
                         </div>
                       </div>
                       {m.roomPublished && m.roomId ? (
@@ -254,7 +265,7 @@ export function DashboardModal() {
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5 text-[11px] text-yellow-400 mt-2">
-                          <Clock className="w-3 h-3" /> Room details will be published 15 mins before match
+                          <Clock className="w-3 h-3" /> Room details auto-publish 5 mins after slots fill
                         </div>
                       )}
                     </motion.div>
@@ -272,7 +283,13 @@ export function DashboardModal() {
                       <div>
                         <div className="font-bold text-white text-sm">{t.title}</div>
                         <div className="text-xs text-muted-foreground">
-                          {t.type === "1v1" ? "1v1" : "2v2"} · {new Date(t.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} · {t.time}
+                          {t.type === "1v1" ? "1v1" : "2v2"}{" "}
+                          {t.tournamentStatus === "started" && (
+                            <span className="text-[#ff6b1a]">· In Progress</span>
+                          )}
+                          {t.tournamentStatus === "active" && (
+                            <span className="text-[#00ff9d]">· Open</span>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1">

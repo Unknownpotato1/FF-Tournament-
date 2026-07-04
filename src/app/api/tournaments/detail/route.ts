@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getCurrentUser } from "@/lib/auth";
+import { processPendingAutoPublish } from "@/app/api/registrations/route";
 
 // GET /api/tournaments/detail?id=... — single tournament + my registration status
 export async function GET(req: Request) {
   try {
+    // Lazy auto-publish
+    await processPendingAutoPublish();
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
     if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
@@ -13,6 +17,13 @@ export async function GET(req: Request) {
     const tSnap = await db.collection("tournaments").doc(id).get();
     if (!tSnap.exists) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
     const t = tSnap.data()!;
+
+    const toIsoOrNull = (v: unknown): string | null => {
+      if (!v) return null;
+      if (v instanceof Date) return v.toISOString();
+      if (v && typeof v === "object" && "_seconds" in v) return new Date((v as { _seconds: number })._seconds * 1000).toISOString();
+      return null;
+    };
 
     const tournament = {
       id: tSnap.id,
@@ -23,8 +34,8 @@ export async function GET(req: Request) {
       slotLimit: t.slotLimit,
       filledSlots: t.filledSlots ?? 0,
       remainingSlots: Math.max(0, (t.slotLimit ?? 0) - (t.filledSlots ?? 0)),
-      date: t.date instanceof Date ? t.date.toISOString() : new Date(t.date?._seconds * 1000 || Date.now()).toISOString(),
-      time: t.time,
+      autoStartAt: toIsoOrNull(t.autoStartAt),
+      autoRoomPublishAt: toIsoOrNull(t.autoRoomPublishAt),
       status: t.status,
       rules: t.rules,
       roomPublished: t.roomPublished ?? false,
@@ -35,7 +46,7 @@ export async function GET(req: Request) {
 
     const user = await getCurrentUser();
     if (user) {
-      // Two where clauses need a composite index. Use single where + client filter.
+      // Single where + client filter (avoids composite index)
       const regSnap = await db
         .collection("registrations")
         .where("tournamentId", "==", id)

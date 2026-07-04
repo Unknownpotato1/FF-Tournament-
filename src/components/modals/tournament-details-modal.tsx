@@ -16,8 +16,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Trophy,
   Users,
-  Calendar,
-  Clock,
   IndianRupee,
   Swords,
   ShieldCheck,
@@ -25,6 +23,7 @@ import {
   AlertCircle,
   Key,
   Loader2,
+  Zap,
 } from "lucide-react";
 
 type Detail = {
@@ -37,8 +36,8 @@ type Detail = {
     slotLimit: number;
     filledSlots: number;
     remainingSlots: number;
-    date: string;
-    time: string;
+    autoStartAt: string | null;
+    autoRoomPublishAt: string | null;
     status: string;
     rules: string;
     roomPublished: boolean;
@@ -135,20 +134,24 @@ export function TournamentDetailsModal() {
 
               {/* Info rows */}
               <div className="space-y-2 mb-4">
-                <div className="flex items-center justify-between p-2.5 rounded-lg glass-card">
+                <div className="flex items-center justify-between p-2.5 rounded-lg glass-card bg-[#00ff9d]/5 border-[#00ff9d]/20">
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="w-4 h-4 text-[#00ff9d]" /> Date
+                    <Zap className="w-4 h-4 text-[#00ff9d]" /> Start Mode
                   </span>
-                  <span className="text-sm font-semibold text-white">
-                    {new Date(t.date).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
+                  <span className="text-sm font-semibold text-[#00ff9d]">
+                    Auto-starts when full
                   </span>
                 </div>
-                <div className="flex items-center justify-between p-2.5 rounded-lg glass-card">
-                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Clock className="w-4 h-4 text-[#ff6b1a]" /> Time
-                  </span>
-                  <span className="text-sm font-semibold text-white">{t.time} IST</span>
-                </div>
+                {t.status === "started" && (
+                  <div className="flex items-center justify-between p-2.5 rounded-lg glass-card bg-[#ff6b1a]/5 border-[#ff6b1a]/20">
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Swords className="w-4 h-4 text-[#ff6b1a]" /> Status
+                    </span>
+                    <span className="text-sm font-semibold text-[#ff6b1a]">
+                      🎮 Match in progress
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between p-2.5 rounded-lg glass-card">
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Users className="w-4 h-4 text-[#00ff9d]" /> Slots
@@ -234,15 +237,21 @@ export function TournamentDetailsModal() {
               ) : (
                 <Button
                   onClick={handleJoin}
-                  disabled={joining || t.remainingSlots === 0}
+                  disabled={joining || t.remainingSlots === 0 || t.status === "started"}
                   className="w-full btn-glow-green rounded-xl py-3 text-base"
                 >
                   {joining ? (
                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : t.status === "started" ? (
+                    <Swords className="w-4 h-4 mr-2" />
                   ) : (
                     <Swords className="w-4 h-4 mr-2" />
                   )}
-                  {t.remainingSlots === 0 ? "Tournament Full" : `Join for ₹${t.entryFee}`}
+                  {t.status === "started"
+                    ? "Match in Progress"
+                    : t.remainingSlots === 0
+                    ? "Slots Full — Starting in 5 min"
+                    : `Join for ₹${t.entryFee}`}
                 </Button>
               )}
 

@@ -33,6 +33,7 @@ import {
   Lock,
   Pencil,
   Settings,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -96,9 +97,7 @@ function AdminTournaments() {
     entryFee: "20",
     prizeAmount: "100",
     slotLimit: "48",
-    date: "",
-    time: "20:00",
-    rules: "Standard Free Fire Clash Squad rules. No hacking, no teaming, fair play only.",
+    rules: "Standard Free Fire Clash Squad rules. No hacking, no teaming, fair play only. Tournament starts automatically when all slots are filled.",
   });
   const [creating, setCreating] = useState(false);
 
@@ -117,9 +116,7 @@ function AdminTournaments() {
       entryFee: "20",
       prizeAmount: "100",
       slotLimit: "48",
-      date: "",
-      time: "20:00",
-      rules: "Standard Free Fire Clash Squad rules. No hacking, no teaming, fair play only.",
+      rules: "Standard Free Fire Clash Squad rules. No hacking, no teaming, fair play only. Tournament starts automatically when all slots are filled.",
     });
     setEditingId(null);
   };
@@ -169,21 +166,12 @@ function AdminTournaments() {
   };
 
   const handleEdit = (t: any) => {
-    // Convert ISO date to YYYY-MM-DD for the date input
-    const dateObj = new Date(t.date);
-    const yyyy = dateObj.getFullYear();
-    const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-    const dd = String(dateObj.getDate()).padStart(2, "0");
-    const dateStr = `${yyyy}-${mm}-${dd}`;
-
     setForm({
       type: t.type,
       title: t.title,
       entryFee: String(t.entryFee),
       prizeAmount: String(t.prizeAmount),
       slotLimit: String(t.slotLimit),
-      date: dateStr,
-      time: t.time,
       rules: t.rules || "",
     });
     setEditingId(t.id);
@@ -311,15 +299,15 @@ function AdminTournaments() {
               <Input type="number" value={form.slotLimit} onChange={(e) => setForm({ ...form, slotLimit: e.target.value })} className="bg-white/5 border-white/10" required />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-xs">Date</Label>
-              <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="bg-white/5 border-white/10" required />
+          <div className="glass-card rounded-lg p-3 bg-[#00ff9d]/5 border-[#00ff9d]/20">
+            <div className="flex items-center gap-2 mb-1">
+              <Zap className="w-3.5 h-3.5 text-[#00ff9d]" />
+              <span className="text-xs font-bold text-[#00ff9d]">Auto-Start Mode</span>
             </div>
-            <div>
-              <Label className="text-xs">Time</Label>
-              <Input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} className="bg-white/5 border-white/10" required />
-            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Tournament starts automatically when all {form.slotLimit || "?"} slots are filled.
+              Room ID &amp; Password will be published to approved players 5 minutes after slots fill.
+            </p>
           </div>
           <div>
             <Label className="text-xs">Rules</Label>
@@ -365,7 +353,13 @@ function AdminTournaments() {
                     ₹{t.entryFee} entry · ₹{t.prizeAmount} prize · {t.filledSlots}/{t.slotLimit} filled
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">
-                    {new Date(t.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} · {t.time}
+                    {t.status === "active" && t.filledSlots < t.slotLimit ? (
+                      <span className="text-[#00ff9d]">⚡ Auto-starts when slots fill · {t.slotLimit - t.filledSlots} left</span>
+                    ) : t.status === "started" ? (
+                      <span className="text-[#ff6b1a]">🎮 In progress</span>
+                    ) : (
+                      <span>{t.status}</span>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end">
@@ -468,7 +462,10 @@ function AdminPayments() {
               <div className="text-xs text-muted-foreground mb-2">
                 <span className="text-white font-semibold">{p.tournamentTitle}</span> ·{" "}
                 {p.tournamentType === "1v1" ? "1v1" : "2v2"} ·{" "}
-                {new Date(p.matchDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} {p.matchTime}
+                <span className="text-[#00ff9d]">{p.filledSlots ?? 0}/{p.slotLimit ?? 0} slots</span>{" "}
+                {p.tournamentStatus === "started" && (
+                  <span className="text-[#ff6b1a] ml-1">· In Progress</span>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <div className="glass-card rounded p-2">

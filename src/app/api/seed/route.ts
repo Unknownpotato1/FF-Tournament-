@@ -3,6 +3,7 @@ import { getAdminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 
 // POST /api/seed — seed demo tournaments (idempotent)
+// Slot-based auto-start — no date/time fields needed
 export async function POST() {
   try {
     const db = getAdminDb();
@@ -13,11 +14,6 @@ export async function POST() {
       return NextResponse.json({ ok: true, message: "Tournaments already exist — skipping seed" });
     }
 
-    const now = new Date();
-    const tomorrow = new Date(now.getTime() + 86400000);
-    const dayAfter = new Date(now.getTime() + 2 * 86400000);
-    const inThreeDays = new Date(now.getTime() + 3 * 86400000);
-
     const tournaments = [
       {
         type: "1v1",
@@ -26,9 +22,9 @@ export async function POST() {
         prizeAmount: 100,
         slotLimit: 48,
         filledSlots: 0,
-        date: tomorrow,
-        time: "20:00",
-        rules: "Standard 1v1 Clash Squad rules. No hacking. Best of 1 round. Booyah wins.",
+        autoStartAt: null,
+        autoRoomPublishAt: null,
+        rules: "Standard 1v1 Clash Squad rules. No hacking. Best of 1 round. Booyah wins. Tournament starts automatically when all 48 slots are filled.",
         status: "active",
         roomId: null,
         roomPassword: null,
@@ -42,9 +38,9 @@ export async function POST() {
         prizeAmount: 500,
         slotLimit: 32,
         filledSlots: 0,
-        date: dayAfter,
-        time: "21:00",
-        rules: "Pro 1v1 rules. BR mode. Top fragger wins. No teaming allowed.",
+        autoStartAt: null,
+        autoRoomPublishAt: null,
+        rules: "Pro 1v1 rules. BR mode. Top fragger wins. No teaming allowed. Auto-starts when 32 slots fill.",
         status: "active",
         roomId: null,
         roomPassword: null,
@@ -58,9 +54,9 @@ export async function POST() {
         prizeAmount: 300,
         slotLimit: 24,
         filledSlots: 0,
-        date: tomorrow,
-        time: "19:00",
-        rules: "2v2 Clash Squad. Both teammates must be registered. Best of 3 rounds.",
+        autoStartAt: null,
+        autoRoomPublishAt: null,
+        rules: "2v2 Clash Squad. Both teammates must be registered. Best of 3 rounds. Auto-starts when 24 slots fill.",
         status: "active",
         roomId: null,
         roomPassword: null,
@@ -74,9 +70,9 @@ export async function POST() {
         prizeAmount: 1500,
         slotLimit: 16,
         filledSlots: 0,
-        date: inThreeDays,
-        time: "18:00",
-        rules: "Premier 2v2 tournament. Single elimination. Final = Bo5.",
+        autoStartAt: null,
+        autoRoomPublishAt: null,
+        rules: "Premier 2v2 tournament. Single elimination. Final = Bo5. Auto-starts when 16 slots fill.",
         status: "active",
         roomId: null,
         roomPassword: null,
