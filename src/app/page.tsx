@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Navbar } from "@/components/sections/navbar";
 import { TopBanner } from "@/components/sections/top-banner";
 import { WinnersBar } from "@/components/sections/winners-bar";
+import { LiveCompetingBox } from "@/components/sections/live-competing-box";
 import { BannerSlider } from "@/components/sections/banner-slider";
 import { StatsSection } from "@/components/sections/stats-section";
 import { TrustSection } from "@/components/sections/trust-section";
@@ -67,9 +68,10 @@ export default function Home() {
       <main className="flex-1">
         <TopBanner />
         <WinnersBar />
+        <LiveCompetingBox />
+        <TournamentsSection />
         <BannerSlider />
         <StatsSection stats={stats ?? DEMO_STATS} />
-        <TournamentsSection />
         <HowItWorks />
         <TrustSection />
         <LeaderboardSection />
