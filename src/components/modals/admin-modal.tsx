@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -31,6 +31,8 @@ import {
   Loader2,
   Trash2,
   Lock,
+  Pencil,
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -87,6 +89,7 @@ function AdminStats() {
 function AdminTournaments() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     type: "1v1",
     title: "",
@@ -107,28 +110,93 @@ function AdminTournaments() {
     },
   });
 
+  const resetForm = () => {
+    setForm({
+      type: "1v1",
+      title: "",
+      entryFee: "20",
+      prizeAmount: "100",
+      slotLimit: "48",
+      date: "",
+      time: "20:00",
+      rules: "Standard Free Fire Clash Squad rules. No hacking, no teaming, fair play only.",
+    });
+    setEditingId(null);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
     try {
-      const res = await fetch("/api/admin/tournaments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        toast.success("Tournament created successfully");
-        setForm({ ...form, title: "", date: "" });
-        setShowForm(false);
-        qc.invalidateQueries({ queryKey: ["admin-tournaments"] });
-        qc.invalidateQueries({ queryKey: ["tournaments"] });
+      if (editingId) {
+        // Update existing tournament
+        const res = await fetch("/api/admin/tournaments", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: editingId, ...form }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast.success("Tournament updated successfully");
+          resetForm();
+          setShowForm(false);
+          qc.invalidateQueries({ queryKey: ["admin-tournaments"] });
+          qc.invalidateQueries({ queryKey: ["tournaments"] });
+        } else {
+          toast.error("Failed", { description: data.error });
+        }
       } else {
-        toast.error("Failed", { description: data.error });
+        // Create new tournament
+        const res = await fetch("/api/admin/tournaments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast.success("Tournament created successfully");
+          resetForm();
+          setShowForm(false);
+          qc.invalidateQueries({ queryKey: ["admin-tournaments"] });
+          qc.invalidateQueries({ queryKey: ["tournaments"] });
+        } else {
+          toast.error("Failed", { description: data.error });
+        }
       }
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleEdit = (t: any) => {
+    // Convert ISO date to YYYY-MM-DD for the date input
+    const dateObj = new Date(t.date);
+    const yyyy = dateObj.getFullYear();
+    const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
+    const dd = String(dateObj.getDate()).padStart(2, "0");
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+
+    setForm({
+      type: t.type,
+      title: t.title,
+      entryFee: String(t.entryFee),
+      prizeAmount: String(t.prizeAmount),
+      slotLimit: String(t.slotLimit),
+      date: dateStr,
+      time: t.time,
+      rules: t.rules || "",
+    });
+    setEditingId(t.id);
+    setShowForm(true);
+    // Scroll to top of form
+    setTimeout(() => {
+      document.querySelector("[data-tournament-form]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  };
+
+  const handleCancelEdit = () => {
+    resetForm();
+    setShowForm(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -162,23 +230,51 @@ function AdminTournaments() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-white">Manage Tournaments</h3>
+        <h3 className="text-sm font-bold text-white">
+          Manage Tournaments {editingId && <span className="text-[#ff6b1a]">· Editing</span>}
+        </h3>
         <Button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => {
+            if (showForm) {
+              resetForm();
+              setShowForm(false);
+            } else {
+              setShowForm(true);
+            }
+          }}
           size="sm"
           className="btn-glow-green rounded-full text-xs"
         >
-          <Plus className="w-3.5 h-3.5 mr-1" /> New
+          {showForm ? (
+            <>Cancel</>
+          ) : (
+            <><Plus className="w-3.5 h-3.5 mr-1" /> New</>
+          )}
         </Button>
       </div>
 
       {showForm && (
         <motion.form
+          data-tournament-form
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: "auto" }}
           onSubmit={handleCreate}
-          className="glass-card rounded-lg p-4 space-y-3"
+          className="glass-card rounded-lg p-4 space-y-3 border-2 border-[#00ff9d]/40"
         >
+          <div className="flex items-center justify-between pb-2 border-b border-white/5">
+            <div className="text-sm font-bold text-[#00ff9d]">
+              {editingId ? "✏️ Edit Tournament" : "➕ Create New Tournament"}
+            </div>
+            {editingId && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="text-[10px] text-muted-foreground hover:text-white"
+              >
+                Cancel Edit
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-xs">Type</Label>
@@ -231,10 +327,16 @@ function AdminTournaments() {
           </div>
           <div className="flex gap-2">
             <Button type="submit" disabled={creating} className="btn-glow-green flex-1 rounded-full text-xs">
-              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Create
+              {creating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : editingId ? (
+                <Check className="w-4 h-4" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
+              {editingId ? "Update Tournament" : "Create Tournament"}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setShowForm(false)} className="rounded-full text-xs">
+            <Button type="button" variant="ghost" onClick={handleCancelEdit} className="rounded-full text-xs">
               Cancel
             </Button>
           </div>
@@ -266,7 +368,14 @@ function AdminTournaments() {
                     {new Date(t.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} · {t.time}
                   </div>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-1 flex-wrap justify-end">
+                  <button
+                    onClick={() => handleEdit(t)}
+                    className="px-2 py-1 rounded text-[10px] font-bold glass-card-hover text-[#ff6b1a] flex items-center gap-1"
+                    title="Edit tournament"
+                  >
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
                   <button
                     onClick={() => handleToggle(t.id, t.status)}
                     className="px-2 py-1 rounded text-[10px] font-bold glass-card-hover text-[#00ff9d]"
@@ -276,6 +385,7 @@ function AdminTournaments() {
                   <button
                     onClick={() => handleDelete(t.id)}
                     className="px-2 py-1 rounded text-[10px] font-bold glass-card-hover text-red-400"
+                    title="Delete tournament"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
@@ -615,6 +725,147 @@ function AdminComplete() {
   );
 }
 
+// ============ Settings Tab ============
+function AdminSettings() {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    upiId: "",
+    payeeName: "",
+    telegramUrl: "",
+    instagramUrl: "",
+    supportEmail: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const { data } = useQuery({
+    queryKey: ["admin-settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/settings", { cache: "no-store" });
+      return res.json();
+    },
+  });
+
+  // Populate form when data loads
+  useEffect(() => {
+    if (data?.settings && !loaded) {
+      setForm({
+        upiId: data.settings.upiId || "",
+        payeeName: data.settings.payeeName || "",
+        telegramUrl: data.settings.telegramUrl || "",
+        instagramUrl: data.settings.instagramUrl || "",
+        supportEmail: data.settings.supportEmail || "",
+      });
+      setLoaded(true);
+    }
+  }, [data, loaded]);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success("Settings saved successfully");
+        qc.invalidateQueries({ queryKey: ["admin-settings"] });
+        qc.invalidateQueries({ queryKey: ["settings"] }); // public settings
+      } else {
+        toast.error("Failed", { description: data.error });
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-bold text-white">App Settings</h3>
+      <p className="text-[11px] text-muted-foreground -mt-2">
+        Customize payment details and support links. Changes apply instantly to all users.
+      </p>
+
+      <form onSubmit={handleSave} className="glass-card rounded-lg p-4 space-y-3">
+        <div className="text-xs font-bold text-[#00ff9d] uppercase tracking-wider pb-2 border-b border-white/5">
+          💳 Payment Settings
+        </div>
+        <div>
+          <Label className="text-xs">UPI ID <span className="text-[#ff6b1a]">*</span></Label>
+          <Input
+            value={form.upiId}
+            onChange={(e) => setForm({ ...form, upiId: e.target.value })}
+            placeholder="yourname@upi"
+            className="bg-white/5 border-white/10 font-mono"
+            required
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            This UPI ID will be shown in the payment modal QR code section.
+          </p>
+        </div>
+        <div>
+          <Label className="text-xs">Payee Name <span className="text-[#ff6b1a]">*</span></Label>
+          <Input
+            value={form.payeeName}
+            onChange={(e) => setForm({ ...form, payeeName: e.target.value })}
+            placeholder="FF Tournament"
+            className="bg-white/5 border-white/10"
+            required
+          />
+        </div>
+
+        <div className="text-xs font-bold text-[#00ff9d] uppercase tracking-wider pt-2 pb-2 border-b border-white/5">
+          🔗 Support Links
+        </div>
+        <div>
+          <Label className="text-xs">Telegram URL</Label>
+          <Input
+            value={form.telegramUrl}
+            onChange={(e) => setForm({ ...form, telegramUrl: e.target.value })}
+            placeholder="https://t.me/yourchannel"
+            className="bg-white/5 border-white/10"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">Instagram URL</Label>
+          <Input
+            value={form.instagramUrl}
+            onChange={(e) => setForm({ ...form, instagramUrl: e.target.value })}
+            placeholder="https://instagram.com/yourhandle"
+            className="bg-white/5 border-white/10"
+          />
+        </div>
+        <div>
+          <Label className="text-xs">Support Email</Label>
+          <Input
+            type="email"
+            value={form.supportEmail}
+            onChange={(e) => setForm({ ...form, supportEmail: e.target.value })}
+            placeholder="support@yourdomain.com"
+            className="bg-white/5 border-white/10"
+          />
+        </div>
+
+        <Button type="submit" disabled={saving} className="btn-glow-green w-full rounded-full text-xs">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          Save Settings
+        </Button>
+      </form>
+
+      <div className="glass-card rounded-lg p-3 border-yellow-500/20 bg-yellow-500/5">
+        <div className="text-[10px] font-bold text-yellow-400 uppercase tracking-wider mb-1">⚠️ Important</div>
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Make sure the UPI ID is correct and registered to receive payments.
+          Test by making a small ₹1 payment before going live with real tournaments.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ============ Main Admin Modal ============
 export function AdminModal() {
   const { activeModal, closeModal } = useUI();
@@ -647,7 +898,7 @@ export function AdminModal() {
 
         <div className="p-4">
           <Tabs defaultValue="stats" className="w-full">
-            <TabsList className="grid grid-cols-2 sm:grid-cols-5 gap-1 bg-transparent p-0 h-auto mb-4">
+            <TabsList className="grid grid-cols-3 sm:grid-cols-6 gap-1 bg-transparent p-0 h-auto mb-4">
               <TabsTrigger value="stats" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
                 <Shield className="w-4 h-4" /> Stats
               </TabsTrigger>
@@ -663,6 +914,9 @@ export function AdminModal() {
               <TabsTrigger value="complete" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
                 <Crown className="w-4 h-4" /> Complete
               </TabsTrigger>
+              <TabsTrigger value="settings" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
+                <Settings className="w-4 h-4" /> Settings
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="stats" className="mt-0"><AdminStats /></TabsContent>
@@ -670,6 +924,7 @@ export function AdminModal() {
             <TabsContent value="payments" className="mt-0"><AdminPayments /></TabsContent>
             <TabsContent value="rooms" className="mt-0"><AdminRooms /></TabsContent>
             <TabsContent value="complete" className="mt-0"><AdminComplete /></TabsContent>
+            <TabsContent value="settings" className="mt-0"><AdminSettings /></TabsContent>
           </Tabs>
         </div>
       </DialogContent>

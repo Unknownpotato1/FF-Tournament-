@@ -63,8 +63,18 @@ export function PaymentModal() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
 
-  const UPI_ID = "fftournament@upi";
-  const PAYEE_NAME = "FF Tournament";
+  // Fetch payment settings (UPI ID, payee name) from Firestore via admin-managed settings
+  const { data: settingsData } = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings", { cache: "no-store" });
+      return res.json();
+    },
+    staleTime: 60 * 1000,
+  });
+
+  const UPI_ID = settingsData?.settings?.upiId || "fftournament@upi";
+  const PAYEE_NAME = settingsData?.settings?.payeeName || "FF Tournament";
   const tournament = data?.tournament;
 
   const handleCopyUPI = () => {
