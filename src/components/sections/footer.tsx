@@ -1,6 +1,6 @@
 "use client";
 
-import { Crosshair, Send, Instagram, Mail, Shield, FileText, Headphones } from "lucide-react";
+import { Send, Instagram, Mail, Shield, FileText, Headphones } from "lucide-react";
 import { useUI } from "@/stores/ui-store";
 
 const FOOTER_LINKS = [
@@ -24,9 +24,7 @@ export function Footer() {
           {/* Brand */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#00ff9d] to-[#ff6b1a] flex items-center justify-center">
-                <Crosshair className="w-5 h-5 text-black" strokeWidth={2.5} />
-              </div>
+              <img src="/logo.png" alt="FF Tournament Logo" className="w-9 h-9 rounded-lg object-cover" />
               <div className="font-black text-lg">
                 <span className="text-white">FF</span>
                 <span className="text-[#00ff9d]">Tournament</span>

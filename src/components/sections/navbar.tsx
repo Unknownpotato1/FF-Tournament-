@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Trophy, LayoutDashboard, Shield, LogOut, LogIn, Crosshair } from "lucide-react";
+import { Menu, X, Trophy, LayoutDashboard, Shield, LogOut, LogIn } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { useUI } from "@/stores/ui-store";
 import { Button } from "@/components/ui/button";
@@ -61,9 +61,11 @@ export function Navbar() {
           >
             <div className="relative">
               <div className="absolute inset-0 bg-[#00ff9d] blur-md opacity-50 group-hover:opacity-80 transition-opacity" />
-              <div className="relative w-9 h-9 rounded-lg bg-gradient-to-br from-[#00ff9d] to-[#ff6b1a] flex items-center justify-center">
-                <Crosshair className="w-5 h-5 text-black" strokeWidth={2.5} />
-              </div>
+              <img
+                src="/logo.png"
+                alt="FF Tournament Logo"
+                className="relative w-10 h-10 rounded-lg object-cover"
+              />
             </div>
             <div className="text-left leading-none">
               <div className="font-black text-lg tracking-tight">

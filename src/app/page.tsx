@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navbar } from "@/components/sections/navbar";
+import { TopBanner } from "@/components/sections/top-banner";
 import { HeroSection } from "@/components/sections/hero-section";
 import { BannerSlider } from "@/components/sections/banner-slider";
 import { AnnouncementBar } from "@/components/sections/announcement-bar";
@@ -67,6 +68,7 @@ export default function Home() {
       <Navbar />
 
       <main className="flex-1">
+        <TopBanner />
         <HeroSection />
         <AnnouncementBar />
         <BannerSlider />
