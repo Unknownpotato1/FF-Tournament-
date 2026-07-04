@@ -144,7 +144,10 @@ export async function processPendingAutoPublish() {
       const t = doc.data();
       if (!t.autoRoomPublishAt) return;
       const publishAt = t.autoRoomPublishAt instanceof Date ? t.autoRoomPublishAt : new Date(t.autoRoomPublishAt._seconds * 1000);
-      if (publishAt <= now && t.roomId && t.roomPassword) {
+      // Publish room details only if admin has pre-set roomId + roomPassword
+      // If admin hasn't, tournament still transitions to "started" status so users see it's in progress,
+      // but room details stay hidden until admin publishes them via the Rooms tab
+      if (publishAt <= now) {
         toPublish.push(doc.id);
       }
     });
@@ -152,20 +155,30 @@ export async function processPendingAutoPublish() {
     if (toPublish.length === 0) return;
 
     const batch = db.batch();
+    const tournamentDocs = new Map<string, any>();
     for (const id of toPublish) {
-      batch.update(db.collection("tournaments").doc(id), {
-        roomPublished: true,
+      const tSnap = await db.collection("tournaments").doc(id).get();
+      if (!tSnap.exists) continue;
+      const tData = tSnap.data()!;
+      tournamentDocs.set(id, tData);
+      // Transition to "started" status regardless
+      // Only set roomPublished=true if admin has pre-set roomId + roomPassword
+      const updates: Record<string, unknown> = {
         status: "started",
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+      if (tData.roomId && tData.roomPassword) {
+        updates.roomPublished = true;
+      }
+      batch.update(db.collection("tournaments").doc(id), updates);
     }
     await batch.commit();
 
     // Notify approved registrations
     for (const tournamentId of toPublish) {
-      const tSnap = await db.collection("tournaments").doc(tournamentId).get();
-      if (!tSnap.exists) continue;
-      const tournament = tSnap.data()!;
+      const tournament = tournamentDocs.get(tournamentId);
+      if (!tournament) continue;
+      const hasRoom = !!(tournament.roomId && tournament.roomPassword);
       const regSnap = await db.collection("registrations").where("tournamentId", "==", tournamentId).get();
       const notifBatch = db.batch();
       regSnap.forEach((regDoc) => {
@@ -174,9 +187,11 @@ export async function processPendingAutoPublish() {
         const notifRef = db.collection("notifications").doc();
         notifBatch.set(notifRef, {
           userId: reg.userId,
-          title: "Room Details Published",
-          message: `Room ID & Password for ${tournament.title} are now available in your dashboard. Match starting!`,
-          type: "room_published",
+          title: hasRoom ? "Room Details Published" : "Match Started",
+          message: hasRoom
+            ? `Room ID & Password for ${tournament.title} are now available in your dashboard. Match starting!`
+            : `${tournament.title} has started! Room details will appear in your dashboard once admin publishes them.`,
+          type: hasRoom ? "room_published" : "match_starting",
           read: false,
           createdAt: FieldValue.serverTimestamp(),
         });
