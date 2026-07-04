@@ -11,6 +11,7 @@ import { StatsSection } from "@/components/sections/stats-section";
 import { TrustSection } from "@/components/sections/trust-section";
 import { HowItWorks } from "@/components/sections/how-it-works";
 import { TournamentsSection } from "@/components/sections/tournaments-section";
+import { InstallAppCard } from "@/components/sections/install-app-card";
 import { LeaderboardSection } from "@/components/sections/leaderboard-section";
 import { FaqSection } from "@/components/sections/faq-section";
 import { Footer } from "@/components/sections/footer";
@@ -70,6 +71,7 @@ export default function Home() {
         <WinnersBar />
         <LiveCompetingBox />
         <TournamentsSection />
+        <InstallAppCard />
         <BannerSlider />
         <StatsSection stats={stats ?? DEMO_STATS} />
         <HowItWorks />
