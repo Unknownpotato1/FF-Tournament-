@@ -4,9 +4,8 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navbar } from "@/components/sections/navbar";
 import { TopBanner } from "@/components/sections/top-banner";
-import { HeroSection } from "@/components/sections/hero-section";
+import { WinnersBar } from "@/components/sections/winners-bar";
 import { BannerSlider } from "@/components/sections/banner-slider";
-import { AnnouncementBar } from "@/components/sections/announcement-bar";
 import { StatsSection } from "@/components/sections/stats-section";
 import { TrustSection } from "@/components/sections/trust-section";
 import { HowItWorks } from "@/components/sections/how-it-works";
@@ -21,7 +20,6 @@ import { DashboardModal } from "@/components/modals/dashboard-modal";
 import { AdminModal } from "@/components/modals/admin-modal";
 import { InfoModals } from "@/components/modals/info-modals";
 import { useUI } from "@/stores/ui-store";
-import { useAuth } from "@/components/auth-provider";
 import { DEMO_STATS } from "@/lib/constants";
 
 async function fetchStats() {
@@ -40,7 +38,6 @@ async function ensureSeeded() {
 
 export default function Home() {
   const { scrollTo, setScrollTo } = useUI();
-  const { user } = useAuth();
 
   // Seed demo data once on first mount (idempotent)
   useEffect(() => {
@@ -69,8 +66,7 @@ export default function Home() {
 
       <main className="flex-1">
         <TopBanner />
-        <HeroSection />
-        <AnnouncementBar />
+        <WinnersBar />
         <BannerSlider />
         <StatsSection stats={stats ?? DEMO_STATS} />
         <TournamentsSection />
