@@ -1,10 +1,11 @@
-// Firebase Client SDK — used in browser for Auth + Firestore + Storage
+// Firebase Client SDK — used in browser for Auth + Firestore
 // All values are public (NEXT_PUBLIC_*) — safe to expose in client bundle.
+// Note: File storage is handled by Cloudinary (server-side) instead of Firebase Storage
+// because Firebase Storage now requires the Blaze (paid) plan.
 
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
-import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -19,7 +20,6 @@ const firebaseConfig = {
 let app: FirebaseApp | null = null;
 let authInstance: Auth | null = null;
 let dbInstance: Firestore | null = null;
-let storageInstance: FirebaseStorage | null = null;
 
 function getApp(): FirebaseApp {
   if (typeof window === "undefined") {
@@ -39,11 +39,6 @@ export function getFirebaseAuth(): Auth {
 export function getDb(): Firestore {
   if (!dbInstance) dbInstance = getFirestore(getApp());
   return dbInstance;
-}
-
-export function getStorageRef(): FirebaseStorage {
-  if (!storageInstance) storageInstance = getStorage(getApp());
-  return storageInstance;
 }
 
 export const googleProvider = new GoogleAuthProvider();

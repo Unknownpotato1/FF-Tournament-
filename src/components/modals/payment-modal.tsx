@@ -27,8 +27,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { getStorageRef, getFirebaseAuth } from "@/lib/firebase-client";
+// Cloudinary upload happens server-side via /api/upload — no client SDK needed
 
 type Tournament = {
   id: string;
@@ -95,24 +94,23 @@ export function PaymentModal() {
     const previewUrl = URL.createObjectURL(file);
     setScreenshotPreview(previewUrl);
 
-    // Upload to Firebase Storage
+    // Upload to Cloudinary via our server (keeps API secret server-side)
     setUploading(true);
     try {
-      const storage = getStorageRef();
-      const auth = getFirebaseAuth();
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        toast.error("Session expired — please login again");
-        setUploading(false);
-        return;
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setScreenshot(data.url);
+        toast.success("Screenshot uploaded");
+      } else {
+        throw new Error(data.error || "Upload failed");
       }
-      const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-      const path = `payments/${user.uid}/${Date.now()}-${safeName}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, file, { contentType: file.type });
-      const downloadURL = await getDownloadURL(storageRef);
-      setScreenshot(downloadURL);
-      toast.success("Screenshot uploaded");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Upload failed";
       toast.error("Upload failed", { description: msg });
@@ -307,7 +305,7 @@ export function PaymentModal() {
                 >
                   <Upload className="w-6 h-6" />
                   <span className="text-xs font-medium">Tap to upload screenshot</span>
-                  <span className="text-[10px]">PNG, JPG up to 2MB · Stored in Firebase Storage</span>
+                  <span className="text-[10px]">PNG, JPG up to 2MB · Stored securely in Cloudinary</span>
                 </button>
               )}
             </div>
