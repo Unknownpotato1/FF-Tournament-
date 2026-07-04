@@ -563,7 +563,11 @@ function AdminRooms() {
     }
   };
 
-  const tournaments = (data?.tournaments ?? []).filter((t: any) => t.status === "active");
+  // Show both "active" (open for registration) AND "started" (slots full / in progress)
+  // tournaments — admin can publish rooms for either state
+  const tournaments = (data?.tournaments ?? []).filter(
+    (t: any) => t.status === "active" || t.status === "started"
+  );
 
   return (
     <div className="space-y-3">
@@ -673,7 +677,10 @@ function AdminComplete() {
     }
   };
 
-  const tournaments = (tournamentsData?.tournaments ?? []).filter((t: any) => t.status === "active");
+  // Complete tab: admin can mark any active OR started tournament as completed
+  const tournaments = (tournamentsData?.tournaments ?? []).filter(
+    (t: any) => t.status === "active" || t.status === "started"
+  );
   const approvedPayments = (regsData?.payments ?? []).filter((p: any) => p.tournamentId === tournamentId);
 
   return (
