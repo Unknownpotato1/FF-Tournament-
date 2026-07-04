@@ -1,0 +1,349 @@
+"use client";
+
+import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useUI } from "@/stores/ui-store";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  IndianRupee,
+  Copy,
+  Check,
+  Upload,
+  FileImage,
+  Loader2,
+  ArrowLeft,
+  QrCode,
+  Info,
+  AlertCircle,
+} from "lucide-react";
+import { toast } from "sonner";
+
+type Tournament = {
+  id: string;
+  title: string;
+  entryFee: number;
+  type: string;
+  date: string;
+  time: string;
+};
+
+async function fetchTournament(id: string): Promise<{ tournament: Tournament }> {
+  const res = await fetch(`/api/tournaments/detail?id=${id}`, { cache: "no-store" });
+  return res.json();
+}
+
+export function PaymentModal() {
+  const { activeModal, selectedTournamentId, closeModal, openModal } = useUI();
+  const isOpen = activeModal === "payment" && !!selectedTournamentId;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["tournament-payment", selectedTournamentId],
+    queryFn: () => fetchTournament(selectedTournamentId!),
+    enabled: isOpen,
+  });
+
+  const [utr, setUtr] = useState("");
+  const [note, setNote] = useState("");
+  const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const UPI_ID = "fftournament@upi";
+  const PAYEE_NAME = "FF Tournament";
+  const tournament = data?.tournament;
+
+  const handleCopyUPI = () => {
+    navigator.clipboard.writeText(UPI_ID);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast.success("UPI ID copied to clipboard");
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("File too large", { description: "Max 2MB allowed" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setScreenshot(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!screenshot) {
+      toast.error("Please upload payment screenshot");
+      return;
+    }
+    if (!utr.trim() || utr.trim().length < 8) {
+      toast.error("Please enter a valid UTR number");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/registrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tournamentId: selectedTournamentId,
+          screenshotURL: screenshot,
+          utrNumber: utr.trim(),
+          note: note.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success("Registration submitted!", {
+          description: "Your payment is under verification. Check your dashboard for updates.",
+        });
+        // Reset
+        setUtr("");
+        setNote("");
+        setScreenshot(null);
+        closeModal();
+        openModal("dashboard");
+      } else {
+        toast.error("Submission failed", { description: data.error });
+      }
+    } catch (err) {
+      toast.error("Network error", { description: "Please try again" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Generate a fake QR code SVG (visual placeholder for the UPI ID)
+  const qrSvg = generateQrLikeSvg();
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && closeModal()}>
+      <DialogContent className="sm:max-w-md bg-[#0c0c12] border-white/10 p-0 overflow-hidden max-h-[92vh] overflow-y-auto custom-scrollbar">
+        {/* Header */}
+        <div className="relative h-20 bg-gradient-to-r from-[#00ff9d]/20 via-[#0c0c12] to-[#ff6b1a]/20 flex items-center px-4">
+          <button
+            onClick={() => openModal("tournamentDetails", selectedTournamentId)}
+            className="w-8 h-8 rounded-full glass-card flex items-center justify-center text-white hover:bg-white/10 mr-3"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Step 3 of 4</div>
+            <div className="text-lg font-black text-white">Complete Payment</div>
+          </div>
+          <button
+            onClick={closeModal}
+            className="absolute top-3 right-3 w-8 h-8 rounded-full glass-card flex items-center justify-center text-white hover:bg-white/10"
+          >
+            ✕
+          </button>
+        </div>
+
+        {isLoading || !tournament ? (
+          <div className="p-6 space-y-3">
+            <Skeleton className="h-32 w-32 mx-auto rounded-xl" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-5">
+            {/* Tournament info */}
+            <div className="glass-card rounded-lg p-3 mb-4 flex items-center justify-between">
+              <div>
+                <div className="text-xs text-muted-foreground">{tournament.type === "1v1" ? "1v1 Clash Squad" : "2v2 Clash Squad"}</div>
+                <div className="font-bold text-white text-sm">{tournament.title}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-muted-foreground">Entry Fee</div>
+                <div className="text-xl font-black text-[#ff6b1a] flex items-center">
+                  <IndianRupee className="w-4 h-4" />
+                  {tournament.entryFee}
+                </div>
+              </div>
+            </div>
+
+            {/* QR Code */}
+            <div className="text-center mb-4">
+              <div className="inline-block p-3 bg-white rounded-xl">
+                <div
+                  className="w-44 h-44"
+                  dangerouslySetInnerHTML={{ __html: qrSvg }}
+                />
+              </div>
+              <div className="text-xs text-muted-foreground mt-2">Scan to pay via any UPI app</div>
+            </div>
+
+            {/* UPI ID */}
+            <div className="glass-card rounded-lg p-3 mb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider">UPI ID</div>
+                  <div className="font-mono font-bold text-white text-sm">{UPI_ID}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">Payee: {PAYEE_NAME}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyUPI}
+                  className="px-3 py-1.5 rounded-full glass-card-hover text-xs font-bold text-[#00ff9d] flex items-center gap-1.5"
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            </div>
+
+            {/* Instructions */}
+            <div className="rounded-lg bg-[#00ff9d]/5 border border-[#00ff9d]/20 p-3 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Info className="w-3.5 h-3.5 text-[#00ff9d]" />
+                <span className="text-xs font-bold text-[#00ff9d]">Payment Instructions</span>
+              </div>
+              <ol className="text-[11px] text-muted-foreground space-y-1 list-decimal list-inside leading-relaxed">
+                <li>Scan the QR code or pay to UPI ID: <span className="font-mono text-white">{UPI_ID}</span></li>
+                <li>Pay exactly <span className="text-[#ff6b1a] font-bold">₹{tournament.entryFee}</span></li>
+                <li>Take a screenshot of the payment success page</li>
+                <li>Copy the 12-digit UTR / Reference number</li>
+                <li>Upload screenshot &amp; enter UTR below</li>
+              </ol>
+            </div>
+
+            {/* Screenshot upload */}
+            <div className="mb-4">
+              <Label className="text-xs text-muted-foreground mb-1.5 block">
+                Payment Screenshot <span className="text-[#ff6b1a]">*</span>
+              </Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              {screenshot ? (
+                <div className="relative rounded-lg overflow-hidden glass-card">
+                  <img src={screenshot} alt="Payment screenshot" className="w-full h-40 object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setScreenshot(null)}
+                    className="absolute top-2 right-2 px-2 py-1 rounded-full bg-black/70 text-white text-xs"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full h-32 rounded-lg glass-card border-2 border-dashed border-white/10 hover:border-[#00ff9d]/40 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-[#00ff9d] transition-colors"
+                >
+                  <Upload className="w-6 h-6" />
+                  <span className="text-xs font-medium">Tap to upload screenshot</span>
+                  <span className="text-[10px]">PNG, JPG up to 2MB</span>
+                </button>
+              )}
+            </div>
+
+            {/* UTR */}
+            <div className="mb-4">
+              <Label htmlFor="utr" className="text-xs text-muted-foreground">
+                UTR / Reference Number <span className="text-[#ff6b1a]">*</span>
+              </Label>
+              <Input
+                id="utr"
+                value={utr}
+                onChange={(e) => setUtr(e.target.value)}
+                placeholder="e.g. 123456789012"
+                className="bg-white/5 border-white/10 focus:border-[#00ff9d] font-mono"
+                required
+              />
+            </div>
+
+            {/* Note */}
+            <div className="mb-5">
+              <Label htmlFor="note" className="text-xs text-muted-foreground">
+                Note (optional)
+              </Label>
+              <Textarea
+                id="note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Any message for the admin..."
+                className="bg-white/5 border-white/10 focus:border-[#00ff9d] resize-none"
+                rows={2}
+              />
+            </div>
+
+            <div className="rounded-lg bg-yellow-500/5 border border-yellow-500/20 p-2.5 mb-4 flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-yellow-400 mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] text-yellow-400/80 leading-relaxed">
+                Status will be <span className="font-bold">Pending Verification</span> after submission.
+                Admin typically approves within 15-30 minutes.
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="w-full btn-glow-green rounded-xl py-3"
+            >
+              {submitting ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Check className="w-4 h-4 mr-2" />
+              )}
+              {submitting ? "Submitting..." : "Submit & Register"}
+            </Button>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Generate a QR-code-like SVG with the UPI ID text baked in (visual only — not scannable)
+function generateQrLikeSvg() {
+  const size = 22;
+  const cells: string[] = [];
+  // pseudo-random pattern (deterministic)
+  let seed = 7;
+  const rand = () => {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      // Corner squares (finder patterns)
+      const inCorner =
+        (x < 7 && y < 7) ||
+        (x >= size - 7 && y < 7) ||
+        (x < 7 && y >= size - 7);
+      if (inCorner) {
+        const cx = x < 7 ? x : x - (size - 7);
+        const cy = y < 7 ? y : y - (size - 7);
+        const isBorder = cx === 0 || cx === 6 || cy === 0 || cy === 6;
+        const isInner = cx >= 2 && cx <= 4 && cy >= 2 && cy <= 4;
+        if (isBorder || isInner) {
+          cells.push(`<rect x="${x * 8}" y="${y * 8}" width="8" height="8" fill="#000"/>`);
+        }
+        continue;
+      }
+      if (rand() > 0.5) {
+        cells.push(`<rect x="${x * 8}" y="${y * 8}" width="8" height="8" fill="#000"/>`);
+      }
+    }
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size * 8} ${size * 8}" width="100%" height="100%">${cells.join("")}</svg>`;
+}

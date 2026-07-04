@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline — FF Tournament</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #050507;
+      color: #f4f4f5;
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+    }
+    .container { max-width: 28rem; }
+    .logo {
+      width: 5rem; height: 5rem;
+      border-radius: 1rem;
+      background: linear-gradient(135deg, #00ff9d, #ff6b1a);
+      margin: 0 auto 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: #050507;
+      font-size: 1.5rem;
+      box-shadow: 0 0 30px rgba(0,255,157,0.4);
+    }
+    h1 { font-size: 1.875rem; font-weight: 900; margin-bottom: 0.75rem; }
+    .green { color: #00ff9d; }
+    p { color: #8b8b9a; line-height: 1.6; margin-bottom: 1.5rem; }
+    button {
+      background: linear-gradient(135deg, #00ff9d, #00d97e);
+      color: #050507;
+      border: none;
+      padding: 0.75rem 2rem;
+      border-radius: 9999px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(0,255,157,0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">FF</div>
+    <h1>You're <span class="green">Offline</span></h1>
+    <p>FF Tournament needs an internet connection to show live tournaments. Please check your network and try again.</p>
+    <button onclick="location.reload()">Try Again</button>
+  </div>
+</body>
+</html>

@@ -1,0 +1,301 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-neon: var(--neon);
+  --color-neon-foreground: var(--neon-foreground);
+  --color-orange-glow: var(--orange-glow);
+  --color-orange-glow-foreground: var(--orange-glow-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.75rem;
+  /* Dark gaming theme - black background with neon green & orange accents */
+  --background: #050507;
+  --foreground: #f4f4f5;
+  --card: #0c0c12;
+  --card-foreground: #f4f4f5;
+  --popover: #0c0c12;
+  --popover-foreground: #f4f4f5;
+  --primary: #00ff9d;
+  --primary-foreground: #050507;
+  --secondary: #1a1a23;
+  --secondary-foreground: #f4f4f5;
+  --muted: #14141c;
+  --muted-foreground: #8b8b9a;
+  --accent: #ff6b1a;
+  --accent-foreground: #050507;
+  --destructive: #ff3b5c;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #00ff9d;
+  --neon: #00ff9d;
+  --neon-foreground: #050507;
+  --orange-glow: #ff6b1a;
+  --orange-glow-foreground: #050507;
+  --chart-1: #00ff9d;
+  --chart-2: #ff6b1a;
+  --chart-3: #00d4ff;
+  --chart-4: #ff3b5c;
+  --chart-5: #ffd700;
+  --sidebar: #0c0c12;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #00ff9d;
+  --sidebar-primary-foreground: #050507;
+  --sidebar-accent: #1a1a23;
+  --sidebar-accent-foreground: #f4f4f5;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #00ff9d;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html, body {
+    @apply bg-background text-foreground;
+    background: #050507;
+    color: #f4f4f5;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0, 255, 157, 0.08), transparent),
+      radial-gradient(ellipse 60% 50% at 90% 100%, rgba(255, 107, 26, 0.06), transparent),
+      radial-gradient(ellipse 60% 50% at 10% 100%, rgba(0, 255, 157, 0.04), transparent);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+}
+
+/* ===== Gaming Glow Effects ===== */
+.glow-green {
+  box-shadow: 0 0 20px rgba(0, 255, 157, 0.35), 0 0 40px rgba(0, 255, 157, 0.15);
+}
+.glow-orange {
+  box-shadow: 0 0 20px rgba(255, 107, 26, 0.35), 0 0 40px rgba(255, 107, 26, 0.15);
+}
+.glow-green-hover {
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+.glow-green-hover:hover {
+  box-shadow: 0 0 30px rgba(0, 255, 157, 0.5), 0 0 60px rgba(0, 255, 157, 0.25);
+  transform: translateY(-2px);
+}
+
+.text-glow-green {
+  text-shadow: 0 0 12px rgba(0, 255, 157, 0.55), 0 0 30px rgba(0, 255, 157, 0.25);
+}
+.text-glow-orange {
+  text-shadow: 0 0 12px rgba(255, 107, 26, 0.55), 0 0 30px rgba(255, 107, 26, 0.25);
+}
+
+/* ===== Glassmorphism Cards ===== */
+.glass-card {
+  background: rgba(20, 20, 28, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.glass-card-hover {
+  transition: all 0.3s ease;
+}
+.glass-card-hover:hover {
+  background: rgba(28, 28, 38, 0.75);
+  border-color: rgba(0, 255, 157, 0.3);
+  box-shadow: 0 0 25px rgba(0, 255, 157, 0.15);
+}
+
+/* ===== Neon Border Animated ===== */
+.neon-border {
+  position: relative;
+  background: linear-gradient(#0c0c12, #0c0c12) padding-box,
+              linear-gradient(135deg, #00ff9d, #ff6b1a) border-box;
+  border: 1px solid transparent;
+}
+
+/* ===== Gradient Buttons ===== */
+.btn-glow-green {
+  background: linear-gradient(135deg, #00ff9d 0%, #00d97e 100%);
+  color: #050507;
+  font-weight: 700;
+  box-shadow: 0 0 20px rgba(0, 255, 157, 0.35), 0 4px 14px rgba(0, 255, 157, 0.2);
+  transition: all 0.25s ease;
+}
+.btn-glow-green:hover:not(:disabled) {
+  box-shadow: 0 0 30px rgba(0, 255, 157, 0.55), 0 6px 20px rgba(0, 255, 157, 0.3);
+  transform: translateY(-2px);
+}
+.btn-glow-orange {
+  background: linear-gradient(135deg, #ff6b1a 0%, #ff8c42 100%);
+  color: #050507;
+  font-weight: 700;
+  box-shadow: 0 0 20px rgba(255, 107, 26, 0.35), 0 4px 14px rgba(255, 107, 26, 0.2);
+  transition: all 0.25s ease;
+}
+.btn-glow-orange:hover:not(:disabled) {
+  box-shadow: 0 0 30px rgba(255, 107, 26, 0.55), 0 6px 20px rgba(255, 107, 26, 0.3);
+  transform: translateY(-2px);
+}
+.btn-ghost-glow {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(0, 255, 157, 0.3);
+  color: #00ff9d;
+  transition: all 0.25s ease;
+}
+.btn-ghost-glow:hover:not(:disabled) {
+  background: rgba(0, 255, 157, 0.1);
+  border-color: rgba(0, 255, 157, 0.6);
+  box-shadow: 0 0 20px rgba(0, 255, 157, 0.25);
+}
+
+/* ===== Marquee Animation ===== */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
+.marquee-container:hover .animate-marquee {
+  animation-play-state: paused;
+}
+
+/* ===== Pulse Glow ===== */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(0, 255, 157, 0.3); }
+  50% { box-shadow: 0 0 35px rgba(0, 255, 157, 0.55); }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 2.5s ease-in-out infinite;
+}
+
+/* ===== Grid Pattern Background ===== */
+.bg-grid-pattern {
+  background-image:
+    linear-gradient(rgba(0, 255, 157, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 157, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+/* ===== Custom Scrollbar ===== */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 157, 0.4);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 157, 0.6);
+}
+
+/* ===== Status Badges ===== */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.status-pending {
+  background: rgba(255, 215, 0, 0.15);
+  color: #ffd700;
+  border: 1px solid rgba(255, 215, 0, 0.3);
+}
+.status-approved {
+  background: rgba(0, 255, 157, 0.15);
+  color: #00ff9d;
+  border: 1px solid rgba(0, 255, 157, 0.3);
+}
+.status-rejected {
+  background: rgba(255, 59, 92, 0.15);
+  color: #ff3b5c;
+  border: 1px solid rgba(255, 59, 92, 0.3);
+}
+.status-active {
+  background: rgba(0, 255, 157, 0.15);
+  color: #00ff9d;
+  border: 1px solid rgba(0, 255, 157, 0.3);
+}
+.status-completed {
+  background: rgba(139, 139, 154, 0.15);
+  color: #8b8b9a;
+  border: 1px solid rgba(139, 139, 154, 0.3);
+}
+
+/* ===== Hero Background Animated ===== */
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(2deg); }
+}
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(0, 255, 157, 0.1) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* ===== Hide scrollbar on carousel ===== */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
