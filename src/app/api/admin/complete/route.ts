@@ -57,11 +57,20 @@ export async function POST(req: Request) {
       }));
 
       // WRITES
-      // 1. Update tournament status
+      // 1. Update tournament: mark as completed (briefly) + record winners,
+      //    then immediately RESET for next round (back to "active" with 0 slots filled).
+      //    The tournament stays visible on the homepage for new players to join again.
       tx.update(tRef, {
-        status: "completed",
-        winnerId: winnerIds[0], // Primary winner (for backward compat)
-        winnerIds: winnerIds,
+        status: "active",          // Reset to active so it reopens
+        winnerId: winnerIds[0],    // Record the winner (for history/leaderboard)
+        winnerIds: winnerIds,      // Record all winners
+        filledSlots: 0,            // Reset filled slots
+        autoStartAt: null,         // Clear auto-start timer
+        autoRoomPublishAt: null,   // Clear auto-publish timer
+        roomPublished: false,      // Reset room published flag
+        roomId: null,              // Clear old room ID (admin sets new one next round)
+        roomPassword: null,        // Clear old password
+        lastCompletedAt: FieldValue.serverTimestamp(), // Track when this round ended
         updatedAt: FieldValue.serverTimestamp(),
       });
 
