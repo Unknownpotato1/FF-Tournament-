@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Download, Smartphone, Zap, Bell, X, Check, ChevronUp } from "lucide-react";
+import { Download, Smartphone, Zap, Bell, X, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -19,7 +19,6 @@ export function InstallAppCard() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
-  const [showFloatingBtn, setShowFloatingBtn] = useState(false);
   const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
@@ -40,8 +39,7 @@ export function InstallAppCard() {
       if (dismissedAt) {
         const elapsed = Date.now() - parseInt(dismissedAt, 10);
         if (elapsed < RE_SHOW_MS) {
-          // Show floating button instead (user can re-open)
-          setShowFloatingBtn(true);
+          // Recently dismissed — don't show popup again until 24h passes
           return;
         }
       }
@@ -63,7 +61,6 @@ export function InstallAppCard() {
     const installedHandler = () => {
       setInstalled(true);
       setShowPopup(false);
-      setShowFloatingBtn(false);
       setDeferredPrompt(null);
       toast.success("FF Tournament installed!", {
         description: "Find it on your home screen.",
@@ -114,13 +111,6 @@ export function InstallAppCard() {
     } catch {
       // ignore
     }
-    // Show floating button so user can re-open later
-    setTimeout(() => setShowFloatingBtn(true), 500);
-  };
-
-  const handleReopen = () => {
-    setShowFloatingBtn(false);
-    setShowPopup(true);
   };
 
   // Don't render anything if installed
@@ -253,23 +243,7 @@ export function InstallAppCard() {
         )}
       </AnimatePresence>
 
-      {/* ===== Floating Re-open Button (shows after dismiss) ===== */}
-      <AnimatePresence>
-        {showFloatingBtn && !showPopup && (
-          <motion.button
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: "spring", damping: 20, stiffness: 300 }}
-            onClick={handleReopen}
-            className="fixed bottom-4 right-4 z-50 w-12 h-12 rounded-full btn-glow-green flex items-center justify-center shadow-lg animate-pulse-glow"
-            aria-label="Install app"
-            title="Install FF Tournament App"
-          >
-            <Download className="w-5 h-5" />
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {/* Floating re-open button removed per user request */}
     </>
   );
 }
