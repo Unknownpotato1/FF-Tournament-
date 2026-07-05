@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Download, Smartphone, Zap, Bell, X, Check } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Download, Smartphone, Zap, Bell, X, Check, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -11,24 +11,18 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 const INSTALL_DISMISS_KEY = "ff-install-dismissed";
+const INSTALL_DISMISSED_AT_KEY = "ff-install-dismissed-at";
+// Re-show popup after 24 hours if user dismissed it
+const RE_SHOW_MS = 24 * 60 * 60 * 1000;
 
 export function InstallAppCard() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
+  const [showFloatingBtn, setShowFloatingBtn] = useState(false);
   const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
-    // Check if already dismissed
-    try {
-      if (localStorage.getItem(INSTALL_DISMISS_KEY) === "1") {
-        setDismissed(true);
-        return;
-      }
-    } catch {
-      // localStorage may be blocked
-    }
-
     // Check if already installed (standalone mode)
     if (typeof window !== "undefined") {
       const isStandalone =
@@ -40,6 +34,24 @@ export function InstallAppCard() {
       }
     }
 
+    // Check if dismissed recently (within 24h)
+    try {
+      const dismissedAt = localStorage.getItem(INSTALL_DISMISSED_AT_KEY);
+      if (dismissedAt) {
+        const elapsed = Date.now() - parseInt(dismissedAt, 10);
+        if (elapsed < RE_SHOW_MS) {
+          // Show floating button instead (user can re-open)
+          setShowFloatingBtn(true);
+          return;
+        }
+      }
+    } catch {
+      // localStorage may be blocked
+    }
+
+    // Delay initial popup by 4 seconds (let user browse first)
+    const initialTimer = setTimeout(() => setShowPopup(true), 4000);
+
     // Listen for beforeinstallprompt
     const handler = (e: Event) => {
       e.preventDefault();
@@ -50,6 +62,8 @@ export function InstallAppCard() {
     // Listen for appinstalled event
     const installedHandler = () => {
       setInstalled(true);
+      setShowPopup(false);
+      setShowFloatingBtn(false);
       setDeferredPrompt(null);
       toast.success("FF Tournament installed!", {
         description: "Find it on your home screen.",
@@ -58,6 +72,7 @@ export function InstallAppCard() {
     window.addEventListener("appinstalled", installedHandler);
 
     return () => {
+      clearTimeout(initialTimer);
       window.removeEventListener("beforeinstallprompt", handler);
       window.removeEventListener("appinstalled", installedHandler);
     };
@@ -82,6 +97,7 @@ export function InstallAppCard() {
         toast.success("Installing FF Tournament...", {
           description: "Check your home screen in a few seconds.",
         });
+        setShowPopup(false);
       }
       setDeferredPrompt(null);
     } catch {
@@ -92,138 +108,168 @@ export function InstallAppCard() {
   };
 
   const handleDismiss = () => {
-    setDismissed(true);
+    setShowPopup(false);
     try {
-      localStorage.setItem(INSTALL_DISMISS_KEY, "1");
+      localStorage.setItem(INSTALL_DISMISSED_AT_KEY, Date.now().toString());
     } catch {
       // ignore
     }
-    toast.success("Got it!", { description: "You can install anytime from the browser menu." });
+    // Show floating button so user can re-open later
+    setTimeout(() => setShowFloatingBtn(true), 500);
   };
 
-  // Don't render if installed or dismissed
-  if (installed || dismissed) return null;
+  const handleReopen = () => {
+    setShowFloatingBtn(false);
+    setShowPopup(true);
+  };
+
+  // Don't render anything if installed
+  if (installed) return null;
 
   return (
-    <section className="py-6 sm:py-8 relative">
-      <div className="container mx-auto px-4 sm:px-6 max-w-5xl">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-50px" }}
-          transition={{ duration: 0.5 }}
-          className="relative rounded-2xl overflow-hidden border border-[#00ff9d]/30"
-        >
-          {/* Background gradient + pattern */}
-          <div className="absolute inset-0 bg-gradient-to-br from-[#00ff9d]/15 via-[#0c0c12] to-[#ff6b1a]/15" />
-          <div className="absolute inset-0 bg-grid-pattern opacity-20" />
-          <div className="absolute top-0 right-0 w-48 h-48 bg-[#00ff9d]/15 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-40 h-40 bg-[#ff6b1a]/15 rounded-full blur-3xl" />
+    <>
+      {/* ===== Bottom Popup Card ===== */}
+      <AnimatePresence>
+        {showPopup && (
+          <>
+            {/* Backdrop (transparent on desktop, slight dark on mobile) */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              onClick={handleDismiss}
+              className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-[2px] sm:bg-transparent sm:backdrop-blur-0"
+            />
 
-          {/* Dismiss button */}
-          <button
-            onClick={handleDismiss}
-            className="absolute top-3 right-3 z-20 w-7 h-7 rounded-full glass-card flex items-center justify-center text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
-            aria-label="Dismiss"
-          >
-            <X className="w-4 h-4" />
-          </button>
+            {/* Popup card sliding up from bottom */}
+            <motion.div
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 28, stiffness: 280 }}
+              className="fixed bottom-0 left-0 right-0 z-[61] sm:bottom-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[440px] sm:max-w-[calc(100vw-2rem)]"
+            >
+              <div className="relative rounded-t-3xl sm:rounded-2xl overflow-hidden border-t-2 sm:border-2 border-[#00ff9d]/40 shadow-2xl glow-green">
+                {/* Background */}
+                <div className="absolute inset-0 bg-gradient-to-br from-[#0c0c12] via-[#0a0a14] to-[#0c0c12]" />
+                <div className="absolute inset-0 bg-grid-pattern opacity-20" />
+                <div className="absolute top-0 right-0 w-40 h-40 bg-[#00ff9d]/15 rounded-full blur-3xl" />
+                <div className="absolute bottom-0 left-0 w-32 h-32 bg-[#ff6b1a]/15 rounded-full blur-3xl" />
 
-          <div className="relative p-5 sm:p-7">
-            <div className="grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-5 md:gap-7 items-center">
-              {/* App icon + label */}
-              <div className="flex items-center gap-3 md:flex-col md:items-start md:gap-2">
-                <div className="relative flex-shrink-0">
-                  <div className="absolute inset-0 bg-[#00ff9d] blur-md opacity-40" />
-                  <img
-                    src="/logo.png"
-                    alt="FF Tournament App"
-                    className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border border-[#00ff9d]/30"
-                  />
+                {/* Drag handle (mobile only) */}
+                <div className="sm:hidden flex justify-center pt-2.5 pb-1">
+                  <div className="w-10 h-1 rounded-full bg-white/20" />
                 </div>
-                <div className="md:hidden">
-                  <div className="font-black text-base text-white">FF Tournament</div>
-                  <div className="text-[10px] text-[#00ff9d] uppercase tracking-wider">PWA · Free · No Store</div>
-                </div>
-              </div>
 
-              {/* Text + features */}
-              <div className="min-w-0">
-                <div className="hidden md:flex items-center gap-2 mb-1">
-                  <span className="px-2 py-0.5 rounded-full bg-[#00ff9d]/15 border border-[#00ff9d]/30 text-[9px] font-bold text-[#00ff9d] uppercase tracking-wider">
-                    Get the App
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">No Play Store needed</span>
-                </div>
-                <h3 className="text-lg sm:text-xl md:text-2xl font-black text-white mb-1.5 leading-tight">
-                  Install <span className="text-[#00ff9d] text-glow-green">FF Tournament</span> App
-                </h3>
-                <p className="text-xs sm:text-sm text-muted-foreground mb-3 leading-relaxed">
-                  Get instant access to live tournaments, real-time match updates, and instant room notifications — right from your home screen.
-                </p>
-                <div className="flex flex-wrap gap-2 sm:gap-3">
-                  <div className="flex items-center gap-1.5 text-[11px] text-white/80">
-                    <div className="w-5 h-5 rounded-full bg-[#00ff9d]/15 flex items-center justify-center">
-                      <Zap className="w-3 h-3 text-[#00ff9d]" />
-                    </div>
-                    Lightning fast
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-white/80">
-                    <div className="w-5 h-5 rounded-full bg-[#00ff9d]/15 flex items-center justify-center">
-                      <Bell className="w-3 h-3 text-[#00ff9d]" />
-                    </div>
-                    Instant alerts
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-white/80">
-                    <div className="w-5 h-5 rounded-full bg-[#00ff9d]/15 flex items-center justify-center">
-                      <Smartphone className="w-3 h-3 text-[#00ff9d]" />
-                    </div>
-                    Works offline
-                  </div>
-                </div>
-              </div>
-
-              {/* Install button */}
-              <div className="flex flex-col gap-2 md:items-end">
-                <button
-                  onClick={handleInstall}
-                  disabled={installing}
-                  className="btn-glow-green rounded-full px-5 sm:px-7 py-3 text-sm font-bold flex items-center justify-center gap-2 w-full md:w-auto whitespace-nowrap"
-                >
-                  {installing ? (
-                    <Check className="w-4 h-4" />
-                  ) : (
-                    <Download className="w-4 h-4" />
-                  )}
-                  {installing ? "Installing..." : "Install Now"}
-                </button>
+                {/* Close button */}
                 <button
                   onClick={handleDismiss}
-                  className="text-[10px] text-muted-foreground hover:text-white transition-colors md:text-right"
+                  className="absolute top-3 right-3 z-10 w-7 h-7 rounded-full glass-card flex items-center justify-center text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
+                  aria-label="Dismiss"
                 >
-                  Maybe later
+                  <X className="w-4 h-4" />
                 </button>
-              </div>
-            </div>
 
-            {/* Bottom strip - mini value prop */}
-            <div className="mt-5 pt-4 border-t border-white/5 flex flex-wrap items-center justify-center md:justify-start gap-4 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Check className="w-3 h-3 text-[#00ff9d]" /> Free to install
-              </span>
-              <span className="flex items-center gap-1">
-                <Check className="w-3 h-3 text-[#00ff9d]" /> No app store required
-              </span>
-              <span className="flex items-center gap-1">
-                <Check className="w-3 h-3 text-[#00ff9d]" /> Works on Android &amp; iPhone
-              </span>
-              <span className="flex items-center gap-1">
-                <Check className="w-3 h-3 text-[#00ff9d]" /> Push notifications
-              </span>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    </section>
+                <div className="relative p-5 sm:p-6">
+                  {/* Header — app icon + title */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="relative flex-shrink-0">
+                      <div className="absolute inset-0 bg-[#00ff9d] blur-md opacity-40" />
+                      <img
+                        src="/logo.png"
+                        alt="FF Tournament"
+                        className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border border-[#00ff9d]/30"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-full bg-[#00ff9d]/15 border border-[#00ff9d]/30 text-[9px] font-bold text-[#00ff9d] uppercase tracking-wider">
+                          Get the App
+                        </span>
+                      </div>
+                      <h3 className="text-base sm:text-lg font-black text-white mt-0.5 leading-tight">
+                        Install <span className="text-[#00ff9d]">FF Tournament</span>
+                      </h3>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <p className="text-xs sm:text-sm text-muted-foreground mb-3 leading-relaxed">
+                    Get instant tournament alerts, live match updates, and 1-tap access — right from your home screen.
+                  </p>
+
+                  {/* Feature pills */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full glass-card text-[10px] text-white/80">
+                      <Zap className="w-3 h-3 text-[#00ff9d]" /> Lightning fast
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full glass-card text-[10px] text-white/80">
+                      <Bell className="w-3 h-3 text-[#00ff9d]" /> Instant alerts
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full glass-card text-[10px] text-white/80">
+                      <Smartphone className="w-3 h-3 text-[#00ff9d]" /> Works offline
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleInstall}
+                      disabled={installing}
+                      className="btn-glow-green rounded-full px-5 py-3 text-sm font-bold flex items-center justify-center gap-2 flex-1"
+                    >
+                      {installing ? (
+                        <Check className="w-4 h-4" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      {installing ? "Installing..." : "Install Now"}
+                    </button>
+                    <button
+                      onClick={handleDismiss}
+                      className="px-4 py-3 rounded-full glass-card text-xs font-bold text-muted-foreground hover:text-white transition-colors"
+                    >
+                      Later
+                    </button>
+                  </div>
+
+                  {/* Trust line */}
+                  <div className="mt-3 flex items-center justify-center gap-3 text-[9px] text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Check className="w-2.5 h-2.5 text-[#00ff9d]" /> Free
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Check className="w-2.5 h-2.5 text-[#00ff9d]" /> No app store
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Check className="w-2.5 h-2.5 text-[#00ff9d]" /> Android &amp; iPhone
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ===== Floating Re-open Button (shows after dismiss) ===== */}
+      <AnimatePresence>
+        {showFloatingBtn && !showPopup && (
+          <motion.button
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: "spring", damping: 20, stiffness: 300 }}
+            onClick={handleReopen}
+            className="fixed bottom-4 right-4 z-50 w-12 h-12 rounded-full btn-glow-green flex items-center justify-center shadow-lg animate-pulse-glow"
+            aria-label="Install app"
+            title="Install FF Tournament App"
+          >
+            <Download className="w-5 h-5" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
