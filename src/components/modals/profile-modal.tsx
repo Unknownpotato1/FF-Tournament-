@@ -88,6 +88,11 @@ export function ProfileModal() {
       formData.append("file", file);
       formData.append("type", "avatar");
       const res = await fetch("/api/upload", { method: "POST", body: formData });
+      // Safe JSON parse — server might return HTML error page
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(`Server error (HTTP ${res.status}). Please try again or contact support.`);
+      }
       const result = await res.json();
       if (result.ok) {
         setEditPhotoURL(result.url);
