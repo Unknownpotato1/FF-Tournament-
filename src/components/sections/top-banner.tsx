@@ -12,7 +12,7 @@ export function TopBanner() {
     >
       <div className="relative w-full overflow-hidden">
         <img
-          src="/banner.png"
+          src="/banner.png?v=2"
           alt="FF Tournament Banner"
           className="w-full h-auto object-cover"
           style={{

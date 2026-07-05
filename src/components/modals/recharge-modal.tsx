@@ -23,6 +23,7 @@ import {
   Info,
   AlertCircle,
   Wallet,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
@@ -36,8 +37,6 @@ async function fetchSettings(): Promise<{ settings: Settings }> {
   const res = await fetch("/api/settings", { cache: "no-store" });
   return res.json();
 }
-
-const QUICK_AMOUNTS = [50, 100, 200, 500, 1000];
 
 export function RechargeModal() {
   const { activeModal, closeModal } = useUI();
@@ -203,30 +202,27 @@ export function RechargeModal() {
                 required
               />
             </div>
-            <div className="flex gap-2 mt-2">
-              {QUICK_AMOUNTS.map((amt) => (
-                <button
-                  key={amt}
-                  type="button"
-                  onClick={() => setAmount(String(amt))}
-                  className="flex-1 py-1.5 rounded-lg glass-card-hover text-xs font-bold text-[#00ff9d]"
-                >
-                  ₹{amt}
-                </button>
-              ))}
-            </div>
           </div>
 
-          {/* QR Code (real image — replaces generated SVG) */}
-          <div className="text-center mb-4">
-            <div className="inline-block p-3 bg-white rounded-xl">
+          {/* QR Code — large, no white background, with download button */}
+          <div className="mb-4">
+            <div className="relative glass-card rounded-xl p-4 border-[#00ff9d]/20">
               <img
                 src="/qr-code.jpg"
                 alt="Payment QR Code"
-                className="w-44 h-44 object-contain"
+                className="w-full max-w-sm mx-auto rounded-lg object-contain"
               />
+              {/* Download button */}
+              <a
+                href="/qr-code.jpg"
+                download="ff-tournament-qr.jpg"
+                className="absolute top-2 right-2 w-8 h-8 rounded-full glass-card flex items-center justify-center text-[#00ff9d] hover:bg-[#00ff9d]/20 transition-colors"
+                title="Download QR Code"
+              >
+                <Download className="w-4 h-4" />
+              </a>
             </div>
-            <div className="text-xs text-muted-foreground mt-2">Scan QR to pay via any UPI app</div>
+            <div className="text-xs text-muted-foreground text-center mt-2">Scan QR to pay via any UPI app</div>
           </div>
 
           {/* Instructions (UPI ID removed — QR code only) */}
