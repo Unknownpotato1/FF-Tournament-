@@ -15,12 +15,13 @@ const INDIAN_NAMES = [
   "Daniel", "Rinku", "Sonu", "Monu", "Bunty", "Chintu", "Pappu", "Bablu",
 ];
 
-const MATCH_TYPES = [
-  "Clash Squad Solo Showdown",
-  "Clash Squad Fatal War",
+// Paired match + prize combinations
+// ₹40 is ALWAYS shown with "Clash Squad Solo Showdown"
+// ₹70 is ALWAYS shown with "Clash Squad Fatal War"
+const MATCH_PRIZES = [
+  { match: "Clash Squad Solo Showdown", amount: 40 },
+  { match: "Clash Squad Fatal War", amount: 70 },
 ];
-
-const PRIZE_AMOUNTS = [40, 70];
 
 const STATES = [
   "Delhi", "Mumbai", "Pune", "Bangalore", "Hyderabad", "Chennai", "Kolkata",
@@ -33,10 +34,11 @@ function pick<T>(arr: T[]): T {
 }
 
 function generateWinnerMessage(): { name: string; amount: number; match: string; state: string } {
+  const { match, amount } = pick(MATCH_PRIZES);
   return {
     name: pick(INDIAN_NAMES),
-    amount: pick(PRIZE_AMOUNTS),
-    match: pick(MATCH_TYPES),
+    amount,
+    match,
     state: pick(STATES),
   };
 }
