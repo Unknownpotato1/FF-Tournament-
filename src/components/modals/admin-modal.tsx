@@ -642,10 +642,11 @@ function AdminComplete() {
     },
   });
 
+  // Fetch approved registrations for the selected tournament (from new registrations collection)
   const { data: regsData } = useQuery({
     queryKey: ["tournament-regs", tournamentId],
     queryFn: async () => {
-      const res = await fetch(`/api/payments?status=approved`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/registrations?tournamentId=${tournamentId}`, { cache: "no-store" });
       return res.json();
     },
     enabled: !!tournamentId,
@@ -705,7 +706,10 @@ function AdminComplete() {
   const tournaments = (tournamentsData?.tournaments ?? []).filter(
     (t: any) => t.status === "active" || t.status === "started"
   );
-  const approvedPlayers = (regsData?.payments ?? []).filter((p: any) => p.tournamentId === tournamentId);
+  // Players from registrations API (already filtered by tournamentId)
+  // Only show approved players for winner selection
+  const allPlayers = regsData?.players ?? [];
+  const approvedPlayers = allPlayers.filter((p: any) => p.status === "approved");
 
   // Calculate per-winner share preview
   const perWinnerShare = winnerIds.length > 0 && prizeAmount
@@ -737,8 +741,14 @@ function AdminComplete() {
           </Label>
           {!tournamentId ? (
             <div className="text-[10px] text-muted-foreground mt-1">Select tournament first</div>
+          ) : allPlayers.length === 0 ? (
+            <div className="text-[10px] text-yellow-400 mt-1">
+              No players have joined this tournament yet.
+            </div>
           ) : approvedPlayers.length === 0 ? (
-            <div className="text-[10px] text-yellow-400 mt-1">No approved players yet.</div>
+            <div className="text-[10px] text-yellow-400 mt-1">
+              {allPlayers.length} player(s) joined but none are approved. (With wallet system, players are auto-approved on join — check if there's a registration issue.)
+            </div>
           ) : (
             <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar mt-1">
               {approvedPlayers.map((p: any) => {
