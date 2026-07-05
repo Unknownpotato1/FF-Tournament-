@@ -16,15 +16,11 @@ const INDIAN_NAMES = [
 ];
 
 const MATCH_TYPES = [
-  "Clash Squad",
-  "1v1 Clash Squad",
-  "2v2 Clash Squad",
-  "Solo Showdown",
-  "Duo Championship",
-  "BR Ranked",
+  "Clash Squad Solo Showdown",
+  "Clash Squad Fatal War",
 ];
 
-const PRIZE_AMOUNTS = [50, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000, 2500, 5000];
+const PRIZE_AMOUNTS = [40, 70];
 
 const STATES = [
   "Delhi", "Mumbai", "Pune", "Bangalore", "Hyderabad", "Chennai", "Kolkata",

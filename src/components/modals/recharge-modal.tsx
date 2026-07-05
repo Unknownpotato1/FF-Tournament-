@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   IndianRupee,
-  Copy,
   Check,
   Upload,
   Loader2,
@@ -51,8 +50,8 @@ export function RechargeModal() {
     staleTime: 60 * 1000,
   });
 
-  const UPI_ID = settingsData?.settings?.upiId || "fftournament@upi";
-  const PAYEE_NAME = settingsData?.settings?.payeeName || "FF Tournament";
+  // UPI ID removed — payment is QR code only now
+  void settingsData; // keep query alive for future use
 
   const [amount, setAmount] = useState("");
   const [utr, setUtr] = useState("");
@@ -61,15 +60,7 @@ export function RechargeModal() {
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleCopyUPI = () => {
-    navigator.clipboard.writeText(UPI_ID);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    toast.success("UPI ID copied to clipboard");
-  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -157,8 +148,6 @@ export function RechargeModal() {
     }
   };
 
-  const qrSvg = generateQrLikeSvg();
-
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && closeModal()}>
       <DialogContent className="sm:max-w-md bg-[#0c0c12] border-white/10 p-0 overflow-hidden max-h-[92vh] overflow-y-auto custom-scrollbar">
@@ -228,41 +217,26 @@ export function RechargeModal() {
             </div>
           </div>
 
-          {/* QR Code */}
+          {/* QR Code (real image — replaces generated SVG) */}
           <div className="text-center mb-4">
             <div className="inline-block p-3 bg-white rounded-xl">
-              <div className="w-44 h-44" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+              <img
+                src="/qr-code.jpg"
+                alt="Payment QR Code"
+                className="w-44 h-44 object-contain"
+              />
             </div>
-            <div className="text-xs text-muted-foreground mt-2">Scan to pay via any UPI app</div>
+            <div className="text-xs text-muted-foreground mt-2">Scan QR to pay via any UPI app</div>
           </div>
 
-          {/* UPI ID */}
-          <div className="glass-card rounded-lg p-3 mb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">UPI ID</div>
-                <div className="font-mono font-bold text-white text-sm">{UPI_ID}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5">Payee: {PAYEE_NAME}</div>
-              </div>
-              <button
-                type="button"
-                onClick={handleCopyUPI}
-                className="px-3 py-1.5 rounded-full glass-card-hover text-xs font-bold text-[#00ff9d] flex items-center gap-1.5"
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
-
-          {/* Instructions */}
+          {/* Instructions (UPI ID removed — QR code only) */}
           <div className="rounded-lg bg-[#00ff9d]/5 border border-[#00ff9d]/20 p-3 mb-4">
             <div className="flex items-center gap-2 mb-2">
               <Info className="w-3.5 h-3.5 text-[#00ff9d]" />
               <span className="text-xs font-bold text-[#00ff9d]">Payment Instructions</span>
             </div>
             <ol className="text-[11px] text-muted-foreground space-y-1 list-decimal list-inside leading-relaxed">
-              <li>Scan QR or pay to UPI ID: <span className="font-mono text-white">{UPI_ID}</span></li>
+              <li>Scan the QR code above with any UPI app</li>
               <li>Pay exactly <span className="text-[#ff6b1a] font-bold">₹{amount || "X"}</span></li>
               <li>Take screenshot of payment success page</li>
               <li>Copy the 12-digit UTR number</li>
@@ -372,37 +346,4 @@ export function RechargeModal() {
       </DialogContent>
     </Dialog>
   );
-}
-
-// Generate a QR-code-like SVG (visual placeholder only)
-function generateQrLikeSvg() {
-  const size = 22;
-  const cells: string[] = [];
-  let seed = 7;
-  const rand = () => {
-    seed = (seed * 9301 + 49297) % 233280;
-    return seed / 233280;
-  };
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const inCorner =
-        (x < 7 && y < 7) ||
-        (x >= size - 7 && y < 7) ||
-        (x < 7 && y >= size - 7);
-      if (inCorner) {
-        const cx = x < 7 ? x : x - (size - 7);
-        const cy = y < 7 ? y : y - (size - 7);
-        const isBorder = cx === 0 || cx === 6 || cy === 0 || cy === 6;
-        const isInner = cx >= 2 && cx <= 4 && cy >= 2 && cy <= 4;
-        if (isBorder || isInner) {
-          cells.push(`<rect x="${x * 8}" y="${y * 8}" width="8" height="8" fill="#000"/>`);
-        }
-        continue;
-      }
-      if (rand() > 0.5) {
-        cells.push(`<rect x="${x * 8}" y="${y * 8}" width="8" height="8" fill="#000"/>`);
-      }
-    }
-  }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size * 8} ${size * 8}" width="100%" height="100%">${cells.join("")}</svg>`;
 }
