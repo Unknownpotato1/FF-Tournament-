@@ -34,6 +34,9 @@ import {
   Pencil,
   Settings,
   Zap,
+  Wallet,
+  Send,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -625,7 +628,7 @@ function AdminRooms() {
 function AdminComplete() {
   const qc = useQueryClient();
   const [tournamentId, setTournamentId] = useState("");
-  const [winnerId, setWinnerId] = useState("");
+  const [winnerIds, setWinnerIds] = useState<string[]>([]);
   const [prizeAmount, setPrizeAmount] = useState("");
   const [completing, setCompleting] = useState(false);
 
@@ -640,16 +643,31 @@ function AdminComplete() {
   const { data: regsData } = useQuery({
     queryKey: ["tournament-regs", tournamentId],
     queryFn: async () => {
-      // Fetch approved registrations for the selected tournament
       const res = await fetch(`/api/payments?status=approved`, { cache: "no-store" });
       return res.json();
     },
     enabled: !!tournamentId,
   });
 
+  // Find selected tournament to determine type (1v1 vs 2v2)
+  const selectedTournament = (tournamentsData?.tournaments ?? []).find((t: any) => t.id === tournamentId);
+  const maxWinners = selectedTournament?.type === "2v2" ? 2 : 1;
+
+  const toggleWinner = (uid: string) => {
+    if (winnerIds.includes(uid)) {
+      setWinnerIds(winnerIds.filter((id) => id !== uid));
+    } else {
+      if (winnerIds.length >= maxWinners) {
+        toast.error(`Max ${maxWinners} winner${maxWinners > 1 ? "s" : ""} allowed for ${selectedTournament?.type}`);
+        return;
+      }
+      setWinnerIds([...winnerIds, uid]);
+    }
+  };
+
   const handleComplete = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tournamentId || !winnerId || !prizeAmount) {
+    if (!tournamentId || winnerIds.length === 0 || !prizeAmount) {
       toast.error("Fill all fields");
       return;
     }
@@ -658,13 +676,18 @@ function AdminComplete() {
       const res = await fetch("/api/admin/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tournamentId, winnerId, prizeAmount: Number(prizeAmount) }),
+        body: JSON.stringify({
+          tournamentId,
+          winnerIds,
+          prizeAmount: Number(prizeAmount),
+        }),
       });
       const data = await res.json();
       if (data.ok) {
-        toast.success("Tournament completed! Winner credited.");
+        const perShare = Math.floor(Number(prizeAmount) / winnerIds.length);
+        toast.success(`Tournament completed! ${winnerIds.length} winner${winnerIds.length > 1 ? "s" : ""} credited ₹${perShare} each.`);
         setTournamentId("");
-        setWinnerId("");
+        setWinnerIds([]);
         setPrizeAmount("");
         qc.invalidateQueries({ queryKey: ["admin-tournaments-complete"] });
         qc.invalidateQueries({ queryKey: ["admin-stats"] });
@@ -677,11 +700,15 @@ function AdminComplete() {
     }
   };
 
-  // Complete tab: admin can mark any active OR started tournament as completed
   const tournaments = (tournamentsData?.tournaments ?? []).filter(
     (t: any) => t.status === "active" || t.status === "started"
   );
-  const approvedPayments = (regsData?.payments ?? []).filter((p: any) => p.tournamentId === tournamentId);
+  const approvedPlayers = (regsData?.payments ?? []).filter((p: any) => p.tournamentId === tournamentId);
+
+  // Calculate per-winner share preview
+  const perWinnerShare = winnerIds.length > 0 && prizeAmount
+    ? Math.floor(Number(prizeAmount) / winnerIds.length)
+    : 0;
 
   return (
     <div className="space-y-3">
@@ -689,7 +716,7 @@ function AdminComplete() {
       <form onSubmit={handleComplete} className="glass-card rounded-lg p-4 space-y-3">
         <div>
           <Label className="text-xs">Tournament</Label>
-          <Select value={tournamentId} onValueChange={(v) => { setTournamentId(v); setWinnerId(""); }}>
+          <Select value={tournamentId} onValueChange={(v) => { setTournamentId(v); setWinnerIds([]); }}>
             <SelectTrigger className="bg-white/5 border-white/10">
               <SelectValue placeholder="Select tournament" />
             </SelectTrigger>
@@ -700,33 +727,401 @@ function AdminComplete() {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Winner selection — checkbox list (multi-select for 2v2) */}
         <div>
-          <Label className="text-xs">Winner</Label>
-          <Select value={winnerId} onValueChange={setWinnerId} disabled={!tournamentId}>
-            <SelectTrigger className="bg-white/5 border-white/10">
-              <SelectValue placeholder={tournamentId ? "Select winner" : "Select tournament first"} />
-            </SelectTrigger>
-            <SelectContent>
-              {approvedPayments.map((p: any) => (
-                <SelectItem key={p.userId} value={p.userId}>{p.userName} ({p.userEmail})</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {tournamentId && approvedPayments.length === 0 && (
+          <Label className="text-xs">
+            Winner{maxWinners > 1 ? "s" : ""} ({winnerIds.length}/{maxWinners} selected)
+          </Label>
+          {!tournamentId ? (
+            <div className="text-[10px] text-muted-foreground mt-1">Select tournament first</div>
+          ) : approvedPlayers.length === 0 ? (
             <div className="text-[10px] text-yellow-400 mt-1">No approved players yet.</div>
+          ) : (
+            <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar mt-1">
+              {approvedPlayers.map((p: any) => {
+                const isSelected = winnerIds.includes(p.userId);
+                return (
+                  <button
+                    key={p.userId}
+                    type="button"
+                    onClick={() => toggleWinner(p.userId)}
+                    className={`w-full flex items-center gap-2 p-2 rounded-lg text-left transition-colors ${
+                      isSelected ? "bg-[#00ff9d]/15 border border-[#00ff9d]/40" : "glass-card border border-transparent"
+                    }`}
+                  >
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                      isSelected ? "bg-[#00ff9d] border-[#00ff9d]" : "border-white/20"
+                    }`}>
+                      {isSelected && <Check className="w-3 h-3 text-black" strokeWidth={3} />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold text-white truncate">{p.userName}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">{p.userEmail}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
+
         <div>
-          <Label className="text-xs">Prize Amount ₹</Label>
+          <Label className="text-xs">Total Prize Amount ₹</Label>
           <Input type="number" value={prizeAmount} onChange={(e) => setPrizeAmount(e.target.value)} placeholder="e.g. 500" className="bg-white/5 border-white/10" required />
+          {winnerIds.length > 0 && prizeAmount && (
+            <div className="text-[10px] text-[#00ff9d] mt-1">
+              Each winner gets: ₹{perWinnerShare.toLocaleString("en-IN")}
+              {winnerIds.length > 1 && ` (${winnerIds.length} winners split equally)`}
+            </div>
+          )}
         </div>
-        <Button type="submit" disabled={completing} className="btn-glow-orange w-full rounded-full text-xs">
+
+        <Button type="submit" disabled={completing || winnerIds.length === 0} className="btn-glow-orange w-full rounded-full text-xs">
           {completing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crown className="w-4 h-4" />}
           Complete &amp; Award Prize
         </Button>
       </form>
     </div>
   );
+}
+
+// ============ Wallet Tab ============
+function AdminWallet() {
+  const qc = useQueryClient();
+  const [subTab, setSubTab] = useState<"recharges" | "withdrawals" | "adjust">("recharges");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [adjustUserId, setAdjustUserId] = useState("");
+  const [adjustAmount, setAdjustAmount] = useState("");
+  const [adjustNote, setAdjustNote] = useState("");
+  const [adjustAction, setAdjustAction] = useState<"add" | "subtract">("add");
+  const [adjusting, setAdjusting] = useState(false);
+
+  const { data: rechargeData, isLoading: rechargeLoading } = useQuery({
+    queryKey: ["admin-recharges"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/recharges", { cache: "no-store" });
+      return res.json();
+    },
+  });
+
+  const { data: withdrawData, isLoading: withdrawLoading } = useQuery({
+    queryKey: ["admin-withdrawals"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/withdrawals", { cache: "no-store" });
+      return res.json();
+    },
+  });
+
+  const handleRechargeAction = async (rechargeId: string, action: "approve" | "reject") => {
+    setActionLoading(rechargeId + action);
+    try {
+      const res = await fetch("/api/admin/recharges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rechargeId, action }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`Recharge ${action === "approve" ? "approved — wallet credited" : "rejected"}`);
+        qc.invalidateQueries({ queryKey: ["admin-recharges"] });
+      } else {
+        toast.error("Failed", { description: data.error });
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleWithdrawAction = async (withdrawalId: string, action: "approve" | "reject") => {
+    setActionLoading(withdrawalId + action);
+    try {
+      const res = await fetch("/api/admin/withdrawals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ withdrawalId, action }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`Withdrawal ${action === "approve" ? "approved — wallet debited" : "rejected"}`);
+        qc.invalidateQueries({ queryKey: ["admin-withdrawals"] });
+      } else {
+        toast.error("Failed", { description: data.error });
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleAdjust = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseInt(adjustAmount, 10);
+    if (!adjustUserId || !amt || amt <= 0) {
+      toast.error("Fill all fields");
+      return;
+    }
+    setAdjusting(true);
+    try {
+      const res = await fetch("/api/admin/wallet/adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: adjustUserId,
+          amount: amt,
+          action: adjustAction,
+          note: adjustNote || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`Wallet ${adjustAction === "add" ? "credited" : "debited"} successfully`);
+        setAdjustUserId("");
+        setAdjustAmount("");
+        setAdjustNote("");
+      } else {
+        toast.error("Failed", { description: data.error });
+      }
+    } finally {
+      setAdjusting(false);
+    }
+  };
+
+  const recharges = rechargeData?.recharges ?? [];
+  const withdrawals = withdrawData?.withdrawals ?? [];
+  const pendingRecharges = recharges.filter((r: any) => r.status === "pending");
+  const pendingWithdrawals = withdrawals.filter((w: any) => w.status === "pending");
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-bold text-white">Wallet Management</h3>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-1 p-1 rounded-full glass-card">
+        <button
+          onClick={() => setSubTab("recharges")}
+          className={`flex-1 py-1.5 rounded-full text-[10px] font-bold transition-all ${subTab === "recharges" ? "btn-glow-green" : "text-muted-foreground"}`}
+        >
+          Recharges ({pendingRecharges.length})
+        </button>
+        <button
+          onClick={() => setSubTab("withdrawals")}
+          className={`flex-1 py-1.5 rounded-full text-[10px] font-bold transition-all ${subTab === "withdrawals" ? "btn-glow-green" : "text-muted-foreground"}`}
+        >
+          Withdrawals ({pendingWithdrawals.length})
+        </button>
+        <button
+          onClick={() => setSubTab("adjust")}
+          className={`flex-1 py-1.5 rounded-full text-[10px] font-bold transition-all ${subTab === "adjust" ? "btn-glow-green" : "text-muted-foreground"}`}
+        >
+          Adjust
+        </button>
+      </div>
+
+      {/* Recharges */}
+      {subTab === "recharges" && (
+        <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
+          {rechargeLoading ? (
+            <div className="text-center py-4 text-xs text-muted-foreground">Loading...</div>
+          ) : recharges.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">No recharge requests</div>
+          ) : (
+            recharges.map((r: any) => (
+              <div key={r.id} className="glass-card rounded-lg p-3">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-[#00ff9d]/20 flex items-center justify-center text-[#00ff9d] font-bold text-sm">
+                      {r.userName?.charAt(0).toUpperCase() ?? "?"}
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-sm">{r.userName}</div>
+                      <div className="text-[10px] text-muted-foreground">{r.userEmail}</div>
+                      <div className="text-[10px] text-[#00ff9d]">Wallet: ₹{r.userWalletBalance}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-black text-[#00ff9d] flex items-center justify-end">
+                      <IndianRupee className="w-3.5 h-3.5" />
+                      {r.amount}
+                    </div>
+                    <span className={`status-badge status-${r.status}`}>{r.status}</span>
+                  </div>
+                </div>
+                <div className="text-[10px] text-muted-foreground mb-2 font-mono">UTR: {r.utrNumber}</div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div className="glass-card rounded p-2">
+                    <div className="text-[10px] text-muted-foreground mb-1">Screenshot</div>
+                    {r.screenshotURL?.startsWith("http") ? (
+                      <a href={r.screenshotURL} target="_blank" rel="noopener noreferrer">
+                        <img src={r.screenshotURL} alt="Payment" className="w-full h-20 object-cover rounded" />
+                      </a>
+                    ) : (
+                      <div className="w-full h-20 rounded bg-white/5 flex items-center justify-center text-[10px] text-muted-foreground">No image</div>
+                    )}
+                  </div>
+                  <div className="glass-card rounded p-2 text-[10px] text-muted-foreground">
+                    Submitted: {new Date(r.submittedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {r.note && <div className="mt-1 italic">"{r.note}"</div>}
+                  </div>
+                </div>
+                {r.status === "pending" && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleRechargeAction(r.id, "approve")}
+                      disabled={actionLoading === r.id + "approve"}
+                      className="btn-glow-green flex-1 rounded-full text-xs py-1.5 font-bold flex items-center justify-center gap-1"
+                    >
+                      {actionLoading === r.id + "approve" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      Approve &amp; Credit
+                    </button>
+                    <button
+                      onClick={() => handleRechargeAction(r.id, "reject")}
+                      disabled={actionLoading === r.id + "reject"}
+                      className="flex-1 rounded-full text-xs py-1.5 font-bold text-red-400 glass-card-hover"
+                    >
+                      {actionLoading === r.id + "reject" ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Withdrawals */}
+      {subTab === "withdrawals" && (
+        <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
+          {withdrawLoading ? (
+            <div className="text-center py-4 text-xs text-muted-foreground">Loading...</div>
+          ) : withdrawals.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">No withdrawal requests</div>
+          ) : (
+            withdrawals.map((w: any) => (
+              <div key={w.id} className="glass-card rounded-lg p-3">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-[#ff6b1a]/20 flex items-center justify-center text-[#ff6b1a] font-bold text-sm">
+                      {r_safe_char(w.userName)}
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-sm">{w.userName}</div>
+                      <div className="text-[10px] text-muted-foreground">{w.userEmail}</div>
+                      <div className="text-[10px] text-[#00ff9d]">Wallet: ₹{w.userWalletBalance}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-black text-[#ff6b1a] flex items-center justify-end">
+                      <IndianRupee className="w-3.5 h-3.5" />
+                      {w.amount}
+                    </div>
+                    <span className={`status-badge status-${w.status}`}>{w.status}</span>
+                  </div>
+                </div>
+                <div className="glass-card rounded p-2 mb-2">
+                  <div className="text-[10px] text-muted-foreground mb-0.5">Send payment to UPI:</div>
+                  <div className="font-mono font-bold text-[#00ff9d] text-sm">{w.upiId}</div>
+                  {w.note && <div className="text-[10px] text-muted-foreground mt-1 italic">"{w.note}"</div>}
+                  {w.adminNote && <div className="text-[10px] text-yellow-400 mt-1">Admin: {w.adminNote}</div>}
+                </div>
+                <div className="text-[10px] text-muted-foreground mb-2">
+                  Requested: {new Date(w.requestedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </div>
+                {w.status === "pending" && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleWithdrawAction(w.id, "approve")}
+                      disabled={actionLoading === w.id + "approve"}
+                      className="btn-glow-green flex-1 rounded-full text-xs py-1.5 font-bold flex items-center justify-center gap-1"
+                    >
+                      {actionLoading === w.id + "approve" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      Approve (Mark Paid)
+                    </button>
+                    <button
+                      onClick={() => handleWithdrawAction(w.id, "reject")}
+                      disabled={actionLoading === w.id + "reject"}
+                      className="flex-1 rounded-full text-xs py-1.5 font-bold text-red-400 glass-card-hover"
+                    >
+                      {actionLoading === w.id + "reject" ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Manual adjust */}
+      {subTab === "adjust" && (
+        <form onSubmit={handleAdjust} className="glass-card rounded-lg p-4 space-y-3">
+          <div className="text-xs font-bold text-[#00ff9d] uppercase tracking-wider pb-2 border-b border-white/5">
+            Manual Wallet Adjustment
+          </div>
+          <div className="text-[11px] text-muted-foreground -mt-2">
+            Manually credit or debit any user's wallet. Useful for refunds, corrections, or bonuses.
+          </div>
+          <div>
+            <Label className="text-xs">User UID</Label>
+            <Input
+              value={adjustUserId}
+              onChange={(e) => setAdjustUserId(e.target.value)}
+              placeholder="Paste user UID (from Firestore console)"
+              className="bg-white/5 border-white/10 font-mono text-xs"
+              required
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Find user UID in Firestore → users collection (document ID).
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs">Action</Label>
+              <Select value={adjustAction} onValueChange={(v: "add" | "subtract") => setAdjustAction(v)}>
+                <SelectTrigger className="bg-white/5 border-white/10"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="add">Add (Credit)</SelectItem>
+                  <SelectItem value="subtract">Subtract (Debit)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Amount ₹</Label>
+              <Input
+                type="number"
+                value={adjustAmount}
+                onChange={(e) => setAdjustAmount(e.target.value)}
+                placeholder="100"
+                min={1}
+                className="bg-white/5 border-white/10"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs">Note (optional)</Label>
+            <Textarea
+              value={adjustNote}
+              onChange={(e) => setAdjustNote(e.target.value)}
+              placeholder="Reason for adjustment..."
+              className="bg-white/5 border-white/10 resize-none"
+              rows={2}
+            />
+          </div>
+          <Button type="submit" disabled={adjusting} className="btn-glow-green w-full rounded-full text-xs">
+            {adjusting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
+            {adjustAction === "add" ? "Credit Wallet" : "Debit Wallet"}
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// Helper to safely get first char of username
+function r_safe_char(name?: string): string {
+  return (name ?? "?").charAt(0).toUpperCase();
 }
 
 // ============ Settings Tab ============
@@ -909,8 +1304,8 @@ export function AdminModal() {
               <TabsTrigger value="tournaments" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
                 <Trophy className="w-4 h-4" /> Tournaments
               </TabsTrigger>
-              <TabsTrigger value="payments" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
-                <CreditCard className="w-4 h-4" /> Payments
+              <TabsTrigger value="wallet" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
+                <Wallet className="w-4 h-4" /> Wallet
               </TabsTrigger>
               <TabsTrigger value="rooms" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
                 <Key className="w-4 h-4" /> Rooms
@@ -925,7 +1320,7 @@ export function AdminModal() {
 
             <TabsContent value="stats" className="mt-0"><AdminStats /></TabsContent>
             <TabsContent value="tournaments" className="mt-0"><AdminTournaments /></TabsContent>
-            <TabsContent value="payments" className="mt-0"><AdminPayments /></TabsContent>
+            <TabsContent value="wallet" className="mt-0"><AdminWallet /></TabsContent>
             <TabsContent value="rooms" className="mt-0"><AdminRooms /></TabsContent>
             <TabsContent value="complete" className="mt-0"><AdminComplete /></TabsContent>
             <TabsContent value="settings" className="mt-0"><AdminSettings /></TabsContent>

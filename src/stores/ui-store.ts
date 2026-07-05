@@ -13,6 +13,9 @@ export type ModalKind =
   | "privacy"
   | "terms"
   | "contact"
+  | "profile"
+  | "recharge"
+  | "withdraw"
   | null;
 
 type UIState = {

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navbar } from "@/components/sections/navbar";
+import { BottomNav } from "@/components/sections/bottom-nav";
 import { TopBanner } from "@/components/sections/top-banner";
 import { WinnersBar } from "@/components/sections/winners-bar";
 import { LiveCompetingBox } from "@/components/sections/live-competing-box";
@@ -17,10 +18,12 @@ import { FaqSection } from "@/components/sections/faq-section";
 import { Footer } from "@/components/sections/footer";
 import { LoginModal } from "@/components/modals/login-modal";
 import { TournamentDetailsModal } from "@/components/modals/tournament-details-modal";
-import { PaymentModal } from "@/components/modals/payment-modal";
 import { DashboardModal } from "@/components/modals/dashboard-modal";
 import { AdminModal } from "@/components/modals/admin-modal";
 import { InfoModals } from "@/components/modals/info-modals";
+import { ProfileModal } from "@/components/modals/profile-modal";
+import { RechargeModal } from "@/components/modals/recharge-modal";
+import { WithdrawModal } from "@/components/modals/withdraw-modal";
 import { useUI } from "@/stores/ui-store";
 import { DEMO_STATS } from "@/lib/constants";
 
@@ -71,7 +74,6 @@ export default function Home() {
         <WinnersBar />
         <LiveCompetingBox />
         <TournamentsSection />
-        <InstallAppCard />
         <BannerSlider />
         <StatsSection stats={stats ?? DEMO_STATS} />
         <HowItWorks />
@@ -81,14 +83,18 @@ export default function Home() {
       </main>
 
       <Footer />
+      <BottomNav />
 
       {/* Modals */}
       <LoginModal />
       <TournamentDetailsModal />
-      <PaymentModal />
       <DashboardModal />
       <AdminModal />
       <InfoModals />
+      <ProfileModal />
+      <RechargeModal />
+      <WithdrawModal />
+      <InstallAppCard />
     </div>
   );
 }

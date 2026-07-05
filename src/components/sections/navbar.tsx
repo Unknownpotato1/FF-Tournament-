@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Trophy, LayoutDashboard, Shield, LogOut, LogIn } from "lucide-react";
+import { Menu, X, Trophy, Shield, LogOut, LogIn, Wallet, Plus } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { useUI } from "@/stores/ui-store";
 import { Button } from "@/components/ui/button";
@@ -91,55 +91,49 @@ export function Navbar() {
             ))}
           </nav>
 
-          {/* Right side */}
+          {/* Right side — wallet + admin */}
           <div className="flex items-center gap-2">
             {user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-2 px-2 py-1.5 rounded-full glass-card-hover transition-all">
-                    <Avatar className="w-7 h-7 border border-[#00ff9d]/30">
-                      <AvatarImage src={user.photoURL ?? undefined} alt={user.name} />
-                      <AvatarFallback className="bg-[#00ff9d]/20 text-[#00ff9d] text-xs">
-                        {user.name.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="hidden sm:inline text-sm font-medium pr-1">{user.name.split(" ")[0]}</span>
+              <>
+                {/* Wallet balance pill */}
+                <button
+                  onClick={() => openModal("recharge")}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full glass-card border-[#00ff9d]/30 hover:border-[#00ff9d]/60 transition-colors group"
+                  title="Tap to recharge wallet"
+                >
+                  <Wallet className="w-4 h-4 text-[#00ff9d]" />
+                  <span className="text-sm font-bold text-white tabular-nums">
+                    ₹{(user.walletBalance ?? 0).toLocaleString("en-IN")}
+                  </span>
+                  <div className="w-5 h-5 rounded-full bg-[#00ff9d] flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Plus className="w-3 h-3 text-black" strokeWidth={3} />
+                  </div>
+                </button>
+
+                {/* Admin shortcut (only for admins) */}
+                {user.role === "admin" && (
+                  <button
+                    onClick={() => openModal("admin")}
+                    className="hidden sm:flex items-center justify-center w-9 h-9 rounded-full glass-card border-[#ff6b1a]/30 hover:border-[#ff6b1a]/60 text-[#ff6b1a] transition-colors"
+                    title="Admin Panel"
+                  >
+                    <Shield className="w-4 h-4" />
                   </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-[#0c0c12] border-white/10">
-                  <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    {user.email}
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator className="bg-white/5" />
-                  <DropdownMenuItem
-                    className="cursor-pointer hover:bg-[#00ff9d]/10 hover:text-[#00ff9d]"
-                    onClick={() => openModal("dashboard")}
-                  >
-                    <LayoutDashboard className="w-4 h-4 mr-2" /> Dashboard
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer hover:bg-[#00ff9d]/10 hover:text-[#00ff9d]"
-                    onClick={() => handleNav("tournaments")}
-                  >
-                    <Trophy className="w-4 h-4 mr-2" /> Tournaments
-                  </DropdownMenuItem>
-                  {user.role === "admin" && (
-                    <DropdownMenuItem
-                      className="cursor-pointer hover:bg-[#ff6b1a]/10 hover:text-[#ff6b1a]"
-                      onClick={() => openModal("admin")}
-                    >
-                      <Shield className="w-4 h-4 mr-2" /> Admin Panel
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator className="bg-white/5" />
-                  <DropdownMenuItem
-                    className="cursor-pointer hover:bg-red-500/10 hover:text-red-400"
-                    onClick={() => logout()}
-                  >
-                    <LogOut className="w-4 h-4 mr-2" /> Logout
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                )}
+
+                {/* Avatar (tap to open profile via bottom nav) — kept small */}
+                <button
+                  onClick={() => openModal("profile")}
+                  className="hidden sm:block"
+                >
+                  <Avatar className="w-8 h-8 border border-[#00ff9d]/30">
+                    <AvatarImage src={user.photoURL ?? undefined} alt={user.name} />
+                    <AvatarFallback className="bg-[#00ff9d]/20 text-[#00ff9d] text-xs">
+                      {user.name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
+              </>
             ) : (
               <Button
                 onClick={() => openModal("login")}
@@ -192,29 +186,16 @@ export function Navbar() {
                     Login / Register
                   </button>
                 )}
-                {user && (
-                  <>
-                    <button
-                      onClick={() => {
-                        setMobileOpen(false);
-                        openModal("dashboard");
-                      }}
-                      className="block w-full text-left px-3 py-2.5 rounded-md text-sm font-medium text-muted-foreground hover:text-[#00ff9d] hover:bg-[#00ff9d]/5 transition-colors"
-                    >
-                      Dashboard
-                    </button>
-                    {user.role === "admin" && (
-                      <button
-                        onClick={() => {
-                          setMobileOpen(false);
-                          openModal("admin");
-                        }}
-                        className="block w-full text-left px-3 py-2.5 rounded-md text-sm font-medium text-[#ff6b1a] hover:bg-[#ff6b1a]/5 transition-colors"
-                      >
-                        Admin Panel
-                      </button>
-                    )}
-                  </>
+                {user && user.role === "admin" && (
+                  <button
+                    onClick={() => {
+                      setMobileOpen(false);
+                      openModal("admin");
+                    }}
+                    className="block w-full text-left px-3 py-2.5 rounded-md text-sm font-medium text-[#ff6b1a] hover:bg-[#ff6b1a]/5 transition-colors"
+                  >
+                    Admin Panel
+                  </button>
                 )}
               </div>
             </motion.div>

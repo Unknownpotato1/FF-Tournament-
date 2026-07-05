@@ -5,15 +5,22 @@ import { FieldValue } from "firebase-admin/firestore";
 
 const FIVE_MIN_MS = 5 * 60 * 1000;
 
-// POST /api/registrations — register + submit payment
+// POST /api/registrations — register for tournament (instant wallet deduction)
+// Body: { tournamentId, note? }
+// Flow:
+//   1. Validate user + tournament + slots
+//   2. Check wallet has enough balance (entryFee)
+//   3. In transaction: deduct entryFee from wallet, create registration (status=approved!),
+//      create walletTransaction, increment filledSlots, notify user
+//   4. If this fills tournament, set autoStartAt + autoRoomPublishAt + notify approved players
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ ok: false, error: "Login required" }, { status: 401 });
 
-    const { tournamentId, screenshotURL, utrNumber, note } = await req.json();
-    if (!tournamentId || !screenshotURL || !utrNumber) {
-      return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
+    const { tournamentId, note } = await req.json();
+    if (!tournamentId) {
+      return NextResponse.json({ ok: false, error: "Missing tournamentId" }, { status: 400 });
     }
 
     const db = getAdminDb();
@@ -24,8 +31,23 @@ export async function POST(req: Request) {
     if (t.status !== "active") return NextResponse.json({ ok: false, error: "Tournament not active" }, { status: 400 });
     if ((t.filledSlots ?? 0) >= (t.slotLimit ?? 0)) return NextResponse.json({ ok: false, error: "Tournament is full" }, { status: 400 });
 
-    // Check for existing registration
-    // Use single where + client-side filter to avoid composite index
+    // Check wallet balance (pre-check; re-check inside transaction for safety)
+    const userRef = db.collection("users").doc(user.uid);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });
+    const userData = userSnap.data()!;
+    const currentBalance = typeof userData.walletBalance === "number" ? userData.walletBalance : 0;
+    if (currentBalance < t.entryFee) {
+      return NextResponse.json({
+        ok: false,
+        error: `Insufficient wallet balance. You need ₹${t.entryFee} but have only ₹${currentBalance}. Please recharge your wallet.`,
+        insufficientBalance: true,
+        required: t.entryFee,
+        current: currentBalance,
+      }, { status: 400 });
+    }
+
+    // Check for existing registration (single where + client filter)
     const existingSnap = await db
       .collection("registrations")
       .where("tournamentId", "==", tournamentId)
@@ -36,24 +58,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Already registered for this tournament" }, { status: 400 });
     }
 
-    // Create registration + payment in a transaction
+    // Create registration + deduct wallet + create walletTransaction in a transaction
     const regId = db.collection("registrations").doc().id;
-    const payId = db.collection("paymentRequests").doc().id;
-
-    const willFillTournament = (t.filledSlots ?? 0) + 1 >= (t.slotLimit ?? 0);
-    const autoStartAt = willFillTournament ? new Date(Date.now() + FIVE_MIN_MS) : null;
-    const autoRoomPublishAt = willFillTournament ? new Date(Date.now() + FIVE_MIN_MS) : null;
+    const txnId = db.collection("walletTransactions").doc().id;
 
     await db.runTransaction(async (tx) => {
-      // Firestore transactions require ALL reads BEFORE any writes.
-      // 1. Read tournament (re-read to prevent race condition on slots)
+      // READS FIRST (Firestore requires reads before writes)
+      // 1. Re-read tournament (race condition protection)
       const freshTSnap = await tx.get(tRef);
       if (!freshTSnap.exists) throw new Error("Tournament vanished");
       const freshT = freshTSnap.data()!;
       if ((freshT.filledSlots ?? 0) >= (freshT.slotLimit ?? 0)) throw new Error("Tournament is full");
 
-      // 2. If this registration will fill the tournament, also read existing registrations
-      //    (must be done BEFORE any writes)
+      // 2. Re-read user (for fresh wallet balance)
+      const freshUserSnap = await tx.get(userRef);
+      if (!freshUserSnap.exists) throw new Error("User not found");
+      const freshUserData = freshUserSnap.data()!;
+      const freshBalance = typeof freshUserData.walletBalance === "number" ? freshUserData.walletBalance : 0;
+      if (freshBalance < t.entryFee) {
+        throw new Error(`Insufficient balance (₹${freshBalance}). Recharge your wallet first.`);
+      }
+
+      // 3. If this registration will fill the tournament, read existing approved registrations
+      //    (so we can notify them about match starting soon)
       const willFill = (freshT.filledSlots ?? 0) + 1 >= (freshT.slotLimit ?? 0);
       let approvedRegs: { userId: string }[] = [];
       if (willFill) {
@@ -66,29 +93,36 @@ export async function POST(req: Request) {
           .map((reg) => ({ userId: reg.userId as string }));
       }
 
-      // 3. Now perform ALL writes
+      // WRITES (all reads done above)
+      // 1. Deduct entryFee from user's wallet
+      tx.update(userRef, {
+        walletBalance: freshBalance - t.entryFee,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      // 2. Create registration (status = "approved" since wallet was charged instantly)
       tx.set(db.collection("registrations").doc(regId), {
         userId: user.uid,
         tournamentId,
-        status: "pending",
+        status: "approved", // Wallet-charged = auto-approved
         note: note ?? null,
+        entryFeePaid: t.entryFee,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      tx.set(db.collection("paymentRequests").doc(payId), {
+      // 3. Create wallet transaction (debit)
+      tx.set(db.collection("walletTransactions").doc(txnId), {
         userId: user.uid,
-        tournamentId,
-        registrationId: regId,
-        screenshotURL,
-        utrNumber,
-        amount: t.entryFee,
-        note: note ?? null,
-        status: "pending",
-        submittedAt: FieldValue.serverTimestamp(),
+        type: "tournament_join",
+        amount: -t.entryFee,
+        status: "approved",
+        note: `Tournament entry: ${t.title}`,
+        refId: tournamentId,
+        createdAt: FieldValue.serverTimestamp(),
       });
 
-      // Increment filledSlots; if this fills the tournament, set autoStartAt + autoRoomPublishAt
+      // 4. Increment tournament filledSlots + set autoStart if filling
       const updates: Record<string, unknown> = {
         filledSlots: FieldValue.increment(1),
         updatedAt: FieldValue.serverTimestamp(),
@@ -100,16 +134,17 @@ export async function POST(req: Request) {
       }
       tx.update(tRef, updates);
 
+      // 5. Notify user about successful registration
       tx.create(db.collection("notifications").doc(), {
         userId: user.uid,
-        title: "Tournament Registered",
-        message: `You've registered for ${t.title}. Payment under verification.`,
+        title: "Tournament Joined Successfully",
+        message: `You've joined ${t.title}. ₹${t.entryFee} deducted from your wallet. Match starts when all slots fill.`,
         type: "tournament_registered",
         read: false,
         createdAt: FieldValue.serverTimestamp(),
       });
 
-      // If this fills the tournament, notify all approved players
+      // 6. If this fills tournament, notify all approved players
       if (willFill) {
         for (const reg of approvedRegs) {
           tx.create(db.collection("notifications").doc(), {
@@ -127,7 +162,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       registrationId: regId,
-      autoStart: willFillTournament ? autoStartAt?.toISOString() : null,
+      newWalletBalance: currentBalance - t.entryFee,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
@@ -141,7 +176,6 @@ export async function processPendingAutoPublish() {
   try {
     const db = getAdminDb();
     const now = new Date();
-    // Find tournaments where autoRoomPublishAt has passed but room not yet published
     const snap = await db
       .collection("tournaments")
       .where("status", "==", "active")
@@ -153,9 +187,6 @@ export async function processPendingAutoPublish() {
       const t = doc.data();
       if (!t.autoRoomPublishAt) return;
       const publishAt = t.autoRoomPublishAt instanceof Date ? t.autoRoomPublishAt : new Date(t.autoRoomPublishAt._seconds * 1000);
-      // Publish room details only if admin has pre-set roomId + roomPassword
-      // If admin hasn't, tournament still transitions to "started" status so users see it's in progress,
-      // but room details stay hidden until admin publishes them via the Rooms tab
       if (publishAt <= now) {
         toPublish.push(doc.id);
       }
@@ -170,8 +201,6 @@ export async function processPendingAutoPublish() {
       if (!tSnap.exists) continue;
       const tData = tSnap.data()!;
       tournamentDocs.set(id, tData);
-      // Transition to "started" status regardless
-      // Only set roomPublished=true if admin has pre-set roomId + roomPassword
       const updates: Record<string, unknown> = {
         status: "started",
         updatedAt: FieldValue.serverTimestamp(),
@@ -183,7 +212,6 @@ export async function processPendingAutoPublish() {
     }
     await batch.commit();
 
-    // Notify approved registrations
     for (const tournamentId of toPublish) {
       const tournament = tournamentDocs.get(tournamentId);
       if (!tournament) continue;

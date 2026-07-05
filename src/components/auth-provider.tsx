@@ -16,6 +16,7 @@ export type AppUser = {
   photoURL: string | null;
   role: "user" | "admin";
   registeredAt: string;
+  walletBalance: number;
 };
 
 type AuthContextType = {

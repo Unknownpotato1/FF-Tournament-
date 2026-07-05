@@ -74,9 +74,11 @@ export async function verifyIdTokenAndCreateSession(
       photoURL: decoded.picture || null,
       role: decoded.email?.endsWith("@admin.in") ? "admin" : "user",
       registeredAt: new Date().toISOString(),
+      walletBalance: 0,
     };
     await userRef.set({
       ...user,
+      walletBalance: 0,
       registeredAt: new Date(), // Firestore Timestamp
     });
     // Create leaderboard entry
@@ -98,6 +100,7 @@ export async function verifyIdTokenAndCreateSession(
         data.registeredAt instanceof Date
           ? data.registeredAt.toISOString()
           : new Date(data.registeredAt?._seconds * 1000 || Date.now()).toISOString(),
+      walletBalance: typeof data.walletBalance === "number" ? data.walletBalance : 0,
     };
   }
 
@@ -130,6 +133,7 @@ export async function getCurrentUser(): Promise<UserRecord | null> {
           : data.registeredAt?._seconds
           ? new Date(data.registeredAt._seconds * 1000).toISOString()
           : new Date().toISOString(),
+      walletBalance: typeof data.walletBalance === "number" ? data.walletBalance : 0,
     };
   } catch {
     return null;
@@ -155,4 +159,5 @@ export type UserRecord = {
   photoURL: string | null;
   role: "user" | "admin";
   registeredAt: string;
+  walletBalance?: number;
 };

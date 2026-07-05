@@ -377,16 +377,16 @@ export function DashboardModal() {
               ))}
             </div>
           ) : (
-            <Tabs defaultValue="upcoming" className="w-full">
+            <Tabs defaultValue="wallet" className="w-full">
               <TabsList className="grid grid-cols-3 sm:grid-cols-6 gap-1 bg-transparent p-0 h-auto mb-4">
+                <TabsTrigger value="wallet" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
+                  <Wallet className="w-4 h-4" /> Wallet
+                </TabsTrigger>
                 <TabsTrigger value="upcoming" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
-                  <Calendar className="w-4 h-4" /> Upcoming
+                  <Calendar className="w-4 h-4" /> Matches
                 </TabsTrigger>
                 <TabsTrigger value="joined" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
                   <Trophy className="w-4 h-4" /> Joined
-                </TabsTrigger>
-                <TabsTrigger value="payments" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
-                  <CreditCard className="w-4 h-4" /> Payments
                 </TabsTrigger>
                 <TabsTrigger value="notifications" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d] relative">
                   <Bell className="w-4 h-4" /> Alerts
@@ -398,9 +398,14 @@ export function DashboardModal() {
                   <History className="w-4 h-4" /> History
                 </TabsTrigger>
                 <TabsTrigger value="prizes" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
-                  <Wallet className="w-4 h-4" /> Prizes
+                  <Crown className="w-4 h-4" /> Prizes
                 </TabsTrigger>
               </TabsList>
+
+              {/* Wallet tab */}
+              <TabsContent value="wallet" className="mt-0 space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
+                <WalletTab />
+              </TabsContent>
 
               {/* Upcoming matches */}
               <TabsContent value="upcoming" className="mt-0 space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
@@ -628,6 +633,111 @@ export function DashboardModal() {
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ============ Wallet Tab ============
+function WalletTab() {
+  const { openModal } = useUI();
+  const { user, refresh } = useAuth();
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["wallet"],
+    queryFn: async () => {
+      const res = await fetch("/api/user/wallet", { cache: "no-store" });
+      return res.json();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-14 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  const wallet = data?.wallet;
+  if (!wallet) return null;
+  const balance = user?.walletBalance ?? wallet.balance ?? 0;
+
+  const formatTxnType = (type: string) => {
+    switch (type) {
+      case "recharge": return "Wallet Recharge";
+      case "tournament_join": return "Tournament Entry";
+      case "tournament_win": return "Tournament Prize";
+      case "withdrawal": return "Withdrawal";
+      case "refund": return "Refund";
+      case "admin_adjust": return "Admin Adjustment";
+      default: return type;
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {/* Balance card */}
+      <div className="glass-card rounded-xl p-4 bg-gradient-to-br from-[#00ff9d]/10 to-transparent text-center">
+        <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Wallet Balance</div>
+        <div className="text-3xl font-black text-[#00ff9d] flex items-center justify-center">
+          <IndianRupee className="w-6 h-6" />
+          {balance.toLocaleString("en-IN")}
+        </div>
+        <div className="flex gap-2 mt-3">
+          <button
+            onClick={() => openModal("recharge")}
+            className="btn-glow-green rounded-full py-2 text-xs font-bold flex-1"
+          >
+            + Recharge
+          </button>
+          <button
+            onClick={() => openModal("withdraw")}
+            className="btn-ghost-glow rounded-full py-2 text-xs font-bold flex-1"
+          >
+            Withdraw
+          </button>
+        </div>
+      </div>
+
+      {/* Transactions list */}
+      <div className="text-[10px] text-muted-foreground uppercase tracking-wider px-1 pt-2">
+        Recent Transactions
+      </div>
+      {wallet.transactions.length === 0 ? (
+        <EmptyState icon={Wallet} text="No transactions yet" />
+      ) : (
+        wallet.transactions.slice(0, 20).map((txn: any) => {
+          const isCredit = txn.amount > 0;
+          const isPending = txn.status === "pending";
+          return (
+            <div key={txn.id} className={`glass-card rounded-lg p-3 ${isPending ? "border-l-2 border-l-yellow-400" : ""}`}>
+              <div className="flex items-start justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold text-white">{formatTxnType(txn.type)}</div>
+                  <div className="text-[10px] text-muted-foreground truncate">{txn.note}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    {new Date(txn.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0 ml-2">
+                  <div className={`text-sm font-black ${isCredit ? "text-[#00ff9d]" : "text-[#ff6b1a]"}`}>
+                    {isCredit ? "+" : ""}₹{Math.abs(txn.amount).toLocaleString("en-IN")}
+                  </div>
+                  {isPending && (
+                    <div className="text-[9px] text-yellow-400 uppercase font-bold mt-0.5">Pending</div>
+                  )}
+                  {txn.status === "rejected" && (
+                    <div className="text-[9px] text-red-400 uppercase font-bold mt-0.5">Rejected</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
   );
 }
 

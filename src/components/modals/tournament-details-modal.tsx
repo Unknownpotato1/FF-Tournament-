@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { useUI } from "@/stores/ui-store";
 import { useAuth } from "@/components/auth-provider";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -53,7 +54,7 @@ async function fetchDetail(id: string): Promise<Detail> {
 
 export function TournamentDetailsModal() {
   const { activeModal, selectedTournamentId, closeModal, openModal } = useUI();
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const [joining, setJoining] = useState(false);
 
   const isOpen = activeModal === "tournamentDetails" && !!selectedTournamentId;
@@ -69,11 +70,44 @@ export function TournamentDetailsModal() {
       openModal("login");
       return;
     }
+    // Check wallet balance
+    const balance = user.walletBalance ?? 0;
+    if (balance < (t?.entryFee ?? 0)) {
+      toast.error("Insufficient wallet balance", {
+        description: `You need ₹${t?.entryFee} but have only ₹${balance}. Recharge your wallet first.`,
+      });
+      openModal("recharge");
+      return;
+    }
     setJoining(true);
-    // Small UX delay
-    await new Promise((r) => setTimeout(r, 300));
-    setJoining(false);
-    openModal("payment", selectedTournamentId);
+    try {
+      const res = await fetch("/api/registrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tournamentId: selectedTournamentId }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success("Joined successfully!", {
+          description: `₹${t?.entryFee} deducted from your wallet. Match starts when slots fill.`,
+        });
+        // Refresh auth (wallet balance updated in navbar)
+        await refresh();
+        closeModal();
+        openModal("dashboard");
+      } else {
+        if (data.insufficientBalance) {
+          toast.error("Insufficient balance", { description: data.error });
+          openModal("recharge");
+        } else {
+          toast.error("Join failed", { description: data.error });
+        }
+      }
+    } catch {
+      toast.error("Network error", { description: "Please try again" });
+    } finally {
+      setJoining(false);
+    }
   };
 
   const t = data?.tournament;
@@ -235,24 +269,39 @@ export function TournamentDetailsModal() {
                   </p>
                 </div>
               ) : (
-                <Button
-                  onClick={handleJoin}
-                  disabled={joining || t.remainingSlots === 0 || t.status === "started"}
-                  className="w-full btn-glow-green rounded-xl py-3 text-base"
-                >
-                  {joining ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : t.status === "started" ? (
-                    <Swords className="w-4 h-4 mr-2" />
-                  ) : (
-                    <Swords className="w-4 h-4 mr-2" />
+                <>
+                  {/* Wallet balance display */}
+                  {user && (
+                    <div className="glass-card rounded-lg p-3 mb-3 flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Your Wallet Balance</span>
+                      <span className={`text-base font-bold flex items-center ${(user.walletBalance ?? 0) >= t.entryFee ? "text-[#00ff9d]" : "text-red-400"}`}>
+                        <IndianRupee className="w-3.5 h-3.5" />
+                        {(user.walletBalance ?? 0).toLocaleString("en-IN")}
+                      </span>
+                    </div>
                   )}
-                  {t.status === "started"
-                    ? "Match in Progress"
-                    : t.remainingSlots === 0
-                    ? "Slots Full — Starting in 5 min"
-                    : `Join for ₹${t.entryFee}`}
-                </Button>
+                  <Button
+                    onClick={handleJoin}
+                    disabled={joining || t.remainingSlots === 0 || t.status === "started"}
+                    className="w-full btn-glow-green rounded-xl py-3 text-base"
+                  >
+                    {joining ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <Swords className="w-4 h-4 mr-2" />
+                    )}
+                    {t.status === "started"
+                      ? "Match in Progress"
+                      : t.remainingSlots === 0
+                      ? "Slots Full — Starting in 5 min"
+                      : `Join Now · ₹${t.entryFee} from wallet`}
+                  </Button>
+                  {user && (user.walletBalance ?? 0) < t.entryFee && t.remainingSlots > 0 && (
+                    <p className="text-[11px] text-center text-red-400 mt-2">
+                      Insufficient balance. Tap to recharge your wallet.
+                    </p>
+                  )}
+                </>
               )}
 
               {!user && !myReg && (
