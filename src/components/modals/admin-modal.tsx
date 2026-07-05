@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -37,6 +37,8 @@ import {
   Wallet,
   Send,
   User,
+  MessageCircle,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1265,6 +1267,205 @@ function AdminSettings() {
   );
 }
 
+// ============ Chat Tab ============
+function AdminChat() {
+  const qc = useQueryClient();
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch all chats (poll every 5s)
+  const { data: chatListData } = useQuery({
+    queryKey: ["admin-chat-list"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/chat", { cache: "no-store" });
+      return res.json();
+    },
+    refetchInterval: 5000,
+  });
+
+  // Fetch messages for selected chat (poll every 3s)
+  const { data: chatMsgData } = useQuery({
+    queryKey: ["admin-chat-messages", selectedChatId],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/chat?chatId=${selectedChatId}`, { cache: "no-store" });
+      return res.json();
+    },
+    enabled: !!selectedChatId,
+    refetchInterval: selectedChatId ? 3000 : false,
+  });
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast.error("Max 2MB"); return; }
+    if (!file.type.startsWith("image/")) { toast.error("Images only"); return; }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const result = await res.json();
+      if (result.ok) { setPendingImage(result.url); toast.success("Image attached"); }
+      else throw new Error(result.error || "Upload failed");
+    } catch { toast.error("Upload failed"); }
+    finally { setUploading(false); }
+  };
+
+  const handleSend = async () => {
+    if (!selectedChatId || (!replyText.trim() && !pendingImage)) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/admin/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId: selectedChatId, text: replyText.trim() || null, imageUrl: pendingImage }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setReplyText("");
+        setPendingImage(null);
+        qc.invalidateQueries({ queryKey: ["admin-chat-messages", selectedChatId] });
+        qc.invalidateQueries({ queryKey: ["admin-chat-list"] });
+      } else { toast.error("Send failed", { description: data.error }); }
+    } catch { toast.error("Network error"); }
+    finally { setSending(false); }
+  };
+
+  const chats = chatListData?.chats ?? [];
+  const messages = chatMsgData?.messages ?? [];
+  const selectedChat = chatMsgData?.chat;
+  const totalUnread = chats.reduce((sum: number, c: any) => sum + (c.unreadByAdmin || 0), 0);
+
+  // ===== Conversation Detail View =====
+  if (selectedChatId && selectedChat) {
+    return (
+      <div className="space-y-3 flex flex-col" style={{ minHeight: "400px" }}>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setSelectedChatId(null); setReplyText(""); setPendingImage(null); }}
+            className="px-3 py-1.5 rounded-full glass-card text-xs font-bold text-muted-foreground hover:text-white"
+          >
+            ← Back
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-[#00ff9d]/20 flex items-center justify-center text-[#00ff9d] font-bold text-sm">
+              {selectedChat.userName?.charAt(0).toUpperCase() ?? "?"}
+            </div>
+            <div>
+              <div className="font-bold text-white text-sm">{selectedChat.userName}</div>
+              <div className="text-[10px] text-muted-foreground">{selectedChat.userEmail}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 max-h-64 min-h-48 p-2">
+          {messages.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">No messages yet</div>
+          ) : (
+            messages.map((msg: any) => {
+              const isAdmin = msg.senderRole === "admin";
+              return (
+                <div key={msg.id} className={`flex gap-2 ${isAdmin ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[75%] rounded-2xl p-2.5 ${
+                    isAdmin ? "bg-[#00ff9d]/15 border border-[#00ff9d]/30 rounded-br-sm" : "bg-white/5 border border-white/10 rounded-bl-sm"
+                  }`}>
+                    {msg.imageUrl && (
+                      <img src={msg.imageUrl} alt="Shared" className="w-full rounded-lg mb-1.5 max-h-32 object-cover" onClick={() => window.open(msg.imageUrl, "_blank")} />
+                    )}
+                    {msg.text && <p className="text-xs text-white leading-relaxed break-words">{msg.text}</p>}
+                    <div className={`text-[8px] mt-0.5 ${isAdmin ? "text-[#00ff9d]/50" : "text-muted-foreground/50"}`}>
+                      {new Date(msg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Pending image preview */}
+        {pendingImage && (
+          <div className="flex items-center gap-2 px-2">
+            <div className="relative">
+              <img src={pendingImage} alt="Pending" className="h-12 rounded" />
+              <button onClick={() => setPendingImage(null)} className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] flex items-center justify-center">✕</button>
+            </div>
+          </div>
+        )}
+
+        {/* Reply input */}
+        <div className="flex items-center gap-2">
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading || sending} className="w-8 h-8 rounded-full glass-card flex items-center justify-center text-muted-foreground hover:text-[#00ff9d] flex-shrink-0">
+            {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+          </button>
+          <input
+            type="text"
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSend(); } }}
+            placeholder="Reply..."
+            disabled={sending}
+            className="flex-1 bg-white/5 border border-white/10 focus:border-[#00ff9d] rounded-full px-3 py-1.5 text-xs text-white outline-none"
+          />
+          <button onClick={handleSend} disabled={sending || (!replyText.trim() && !pendingImage)} className="w-8 h-8 rounded-full btn-glow-green flex items-center justify-center flex-shrink-0 disabled:opacity-50">
+            {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Chat List View =====
+  return (
+    <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar pr-1">
+      <h3 className="text-sm font-bold text-white">
+        Player Messages {totalUnread > 0 && <span className="text-[#ff6b1a]">({totalUnread} unread)</span>}
+      </h3>
+      {chats.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground text-sm">No conversations yet</div>
+      ) : (
+        chats.map((c: any) => (
+          <button
+            key={c.id}
+            onClick={() => setSelectedChatId(c.id)}
+            className={`w-full flex items-center gap-3 p-3 rounded-lg glass-card hover:border-[#00ff9d]/30 text-left transition-colors ${c.unreadByAdmin > 0 ? "border-l-2 border-l-[#ff6b1a]" : ""}`}
+          >
+            <div className="w-10 h-10 rounded-full bg-[#00ff9d]/20 flex items-center justify-center text-[#00ff9d] font-bold flex-shrink-0">
+              {c.userName?.charAt(0).toUpperCase() ?? "?"}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-white text-sm truncate">{c.userName}</span>
+                {c.lastMessageAt && (
+                  <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-2">
+                    {new Date(c.lastMessageAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between mt-0.5">
+                <span className="text-[11px] text-muted-foreground truncate">
+                  {c.lastSender === "admin" && "You: "}{c.lastMessage || "No messages"}
+                </span>
+                {c.unreadByAdmin > 0 && (
+                  <span className="ml-2 px-1.5 py-0.5 rounded-full bg-[#ff6b1a] text-white text-[9px] font-bold flex-shrink-0">
+                    {c.unreadByAdmin}
+                  </span>
+                )}
+              </div>
+            </div>
+          </button>
+        ))
+      )}
+    </div>
+  );
+}
+
 // ============ Main Admin Modal ============
 export function AdminModal() {
   const { activeModal, closeModal } = useUI();
@@ -1297,7 +1498,7 @@ export function AdminModal() {
 
         <div className="p-4">
           <Tabs defaultValue="stats" className="w-full">
-            <TabsList className="grid grid-cols-3 sm:grid-cols-6 gap-1 bg-transparent p-0 h-auto mb-4">
+            <TabsList className="grid grid-cols-4 sm:grid-cols-7 gap-1 bg-transparent p-0 h-auto mb-4">
               <TabsTrigger value="stats" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
                 <Shield className="w-4 h-4" /> Stats
               </TabsTrigger>
@@ -1316,6 +1517,9 @@ export function AdminModal() {
               <TabsTrigger value="settings" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
                 <Settings className="w-4 h-4" /> Settings
               </TabsTrigger>
+              <TabsTrigger value="chat" className="flex flex-col gap-1 py-2 text-[10px] data-[state=active]:bg-[#00ff9d]/10 data-[state=active]:text-[#00ff9d]">
+                <MessageCircle className="w-4 h-4" /> Chat
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="stats" className="mt-0"><AdminStats /></TabsContent>
@@ -1324,6 +1528,7 @@ export function AdminModal() {
             <TabsContent value="rooms" className="mt-0"><AdminRooms /></TabsContent>
             <TabsContent value="complete" className="mt-0"><AdminComplete /></TabsContent>
             <TabsContent value="settings" className="mt-0"><AdminSettings /></TabsContent>
+            <TabsContent value="chat" className="mt-0"><AdminChat /></TabsContent>
           </Tabs>
         </div>
       </DialogContent>

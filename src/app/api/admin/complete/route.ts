@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAdmin } from "@/lib/auth";
 import { FieldValue } from "firebase-admin/firestore";
+import { sendPushNotification } from "@/lib/push";
 
 // POST /api/admin/complete — mark tournament completed + award winners
 // Body: { tournamentId, winnerIds: string[], prizeAmount: number }
@@ -114,6 +115,29 @@ export async function POST(req: Request) {
         });
       });
     });
+
+    // Send push notifications to winners + all approved players
+    for (const w of winnerShares) {
+      await sendPushNotification(w.userId, {
+        title: "🎉 You Won!",
+        body: `Congratulations! You won ₹${w.share} in ${tournament.title}. Prize added to your wallet!`,
+        tag: "tournament_win",
+        data: { url: "/" },
+      });
+    }
+    // Notify non-winners
+    const allRegsSnap = await db.collection("registrations").where("tournamentId", "==", tournamentId).get();
+    for (const doc of allRegsSnap.docs) {
+      const reg = doc.data();
+      if (reg.status !== "approved") continue;
+      if (winnerIds.includes(reg.userId)) continue; // skip winners (already notified)
+      await sendPushNotification(reg.userId, {
+        title: "🎮 Tournament Completed",
+        body: `${tournament.title} has ended. Better luck next time!`,
+        tag: "tournament_completed",
+        data: { url: "/" },
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { requireAdmin } from "@/lib/auth";
 import { FieldValue } from "firebase-admin/firestore";
+import { sendPushNotification } from "@/lib/push";
 
 // POST /api/admin/rooms — publish room details
 export async function POST(req: Request) {
@@ -43,6 +44,22 @@ export async function POST(req: Request) {
         });
       });
     });
+
+    // Send push notifications to all approved players
+    const pushSnap = await db.collection("registrations").where("tournamentId", "==", tournamentId).get();
+    const approvedUserIds: string[] = [];
+    pushSnap.forEach((doc) => {
+      const reg = doc.data();
+      if (reg.status === "approved") approvedUserIds.push(reg.userId);
+    });
+    for (const uid of approvedUserIds) {
+      await sendPushNotification(uid, {
+        title: "🔑 Room Details Published!",
+        body: `Room ID & Password for ${tournament.title} are now available in your dashboard. Match starting!`,
+        tag: "room_published",
+        data: { url: "/" },
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

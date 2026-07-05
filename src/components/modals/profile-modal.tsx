@@ -307,6 +307,16 @@ export function ProfileModal() {
                 <span className="text-muted-foreground">→</span>
               </button>
 
+              <button
+                onClick={() => { closeModal(); openModal("chat"); }}
+                className="w-full flex items-center justify-between p-3 rounded-lg glass-card glass-card-hover text-sm"
+              >
+                <span className="flex items-center gap-2 text-white">
+                  💬 Talk to Admin
+                </span>
+                <span className="text-muted-foreground">→</span>
+              </button>
+
               {user.role === "admin" && (
                 <button
                   onClick={() => { closeModal(); openModal("admin"); }}

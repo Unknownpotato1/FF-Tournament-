@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getCurrentUser, requireAdmin } from "@/lib/auth";
 import { FieldValue } from "firebase-admin/firestore";
+import { sendPushNotification } from "@/lib/push";
 
 // GET /api/admin/withdrawals — list withdrawal requests (admin: all; user: own)
 export async function GET(req: Request) {
@@ -143,6 +144,17 @@ export async function POST(req: Request) {
         read: false,
         createdAt: FieldValue.serverTimestamp(),
       });
+    });
+
+    // Send push notification to user
+    await sendPushNotification(withdrawal.userId, {
+      title: action === "approve" ? "✅ Withdrawal Approved!" : "❌ Withdrawal Rejected",
+      body:
+        action === "approve"
+          ? `Your withdrawal of ₹${withdrawal.amount} has been approved. Payment sent to ${withdrawal.upiId}.`
+          : `Your withdrawal of ₹${withdrawal.amount} was rejected.${adminNote ? ` ${adminNote}` : ""}`,
+      tag: "withdrawal",
+      data: { url: "/" },
     });
 
     return NextResponse.json({ ok: true });

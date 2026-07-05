@@ -29,6 +29,58 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Convert base64 public key to Uint8Array for push subscription
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = typeof window !== "undefined" ? window.atob(base64) : Buffer.from(base64, "base64").toString("binary");
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    output[i] = rawData.charCodeAt(i);
+  }
+  return output;
+}
+
+// Subscribe user to push notifications (called after login + on session restore)
+async function subscribeToPush() {
+  try {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+    const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!publicKey) return;
+
+    // Request permission
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return;
+
+    // Wait for service worker to be ready
+    const registration = await navigator.serviceWorker.ready;
+
+    // Check if already subscribed
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    }
+
+    // Send subscription to server
+    const sub = subscription.toJSON();
+    await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: sub.endpoint,
+        keys: sub.keys,
+      }),
+    });
+  } catch {
+    // Silent fail — push is optional
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +92,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user ?? null);
+        // If user is logged in, ensure push subscription
+        if (data.user) {
+          subscribeToPush().catch(() => {});
+        }
       } else {
         setUser(null);
       }
@@ -59,7 +115,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const auth = getFirebaseAuth();
       const result = await signInWithPopup(auth, googleProvider);
       const fbUser: FirebaseUser = result.user;
-      // Get ID token and exchange for session cookie
       const idToken = await fbUser.getIdToken();
       const res = await fetch("/api/auth/session", {
         method: "POST",
@@ -69,6 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await res.json();
       if (data.ok) {
         setUser(data.user);
+        // Subscribe to push notifications after successful login
+        subscribeToPush().catch(() => {});
         return { ok: true };
       }
       return { ok: false, error: data.error };

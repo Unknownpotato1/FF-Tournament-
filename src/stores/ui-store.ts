@@ -16,6 +16,7 @@ export type ModalKind =
   | "profile"
   | "recharge"
   | "withdraw"
+  | "chat"
   | null;
 
 type UIState = {

@@ -24,6 +24,7 @@ import { InfoModals } from "@/components/modals/info-modals";
 import { ProfileModal } from "@/components/modals/profile-modal";
 import { RechargeModal } from "@/components/modals/recharge-modal";
 import { WithdrawModal } from "@/components/modals/withdraw-modal";
+import { ChatModal } from "@/components/modals/chat-modal";
 import { useUI } from "@/stores/ui-store";
 import { DEMO_STATS } from "@/lib/constants";
 
@@ -94,6 +95,7 @@ export default function Home() {
       <ProfileModal />
       <RechargeModal />
       <WithdrawModal />
+      <ChatModal />
       <InstallAppCard />
     </div>
   );

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase-admin";
 import { getCurrentUser, requireAdmin } from "@/lib/auth";
 import { FieldValue } from "firebase-admin/firestore";
+import { sendPushNotification } from "@/lib/push";
 
 // GET /api/admin/recharges — list recharge requests (admin: all; user: own)
 export async function GET(req: Request) {
@@ -139,6 +140,17 @@ export async function POST(req: Request) {
         read: false,
         createdAt: FieldValue.serverTimestamp(),
       });
+    });
+
+    // Send push notification to user
+    await sendPushNotification(recharge.userId, {
+      title: action === "approve" ? "✅ Recharge Approved!" : "❌ Recharge Rejected",
+      body:
+        action === "approve"
+          ? `Your recharge of ₹${recharge.amount} has been approved. Wallet credited!`
+          : `Your recharge of ₹${recharge.amount} was rejected. Contact support.`,
+      tag: "recharge",
+      data: { url: "/" },
     });
 
     return NextResponse.json({ ok: true });
