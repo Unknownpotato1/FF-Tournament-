@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Home, Trophy, LayoutDashboard, User } from "lucide-react";
 import { useUI } from "@/stores/ui-store";
 import { useAuth } from "@/components/auth-provider";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 type NavItem = {
   id: "home" | "tournaments" | "dashboard" | "profile";
@@ -12,13 +13,14 @@ type NavItem = {
   target?: string; // scroll target for home/tournaments
   requiresAuth?: boolean;
   modal?: "dashboard" | "profile" | null;
+  isProfile?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
   { id: "home", label: "Home", icon: Home, target: "hero" },
   { id: "tournaments", label: "Tournaments", icon: Trophy, target: "tournaments" },
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, requiresAuth: true, modal: "dashboard" },
-  { id: "profile", label: "Profile", icon: User, requiresAuth: true, modal: "profile" },
+  { id: "profile", label: "Profile", icon: User, requiresAuth: true, modal: "profile", isProfile: true },
 ];
 
 export function BottomNav() {
@@ -54,6 +56,33 @@ export function BottomNav() {
             <div className="flex items-center justify-around sm:gap-1">
               {NAV_ITEMS.map((item) => {
                 const Icon = item.icon;
+
+                // Profile button: show user's avatar image if logged in,
+                // otherwise show the generic User icon
+                if (item.isProfile) {
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => handleNav(item)}
+                      className="group relative flex flex-col items-center justify-center gap-0.5 px-4 sm:px-5 py-2 rounded-full transition-all hover:bg-white/5"
+                    >
+                      {user ? (
+                        <Avatar className="w-5 h-5 sm:w-4 sm:h-4 border border-[#00ff9d]/30 group-hover:border-[#00ff9d] transition-colors">
+                          <AvatarImage src={user.photoURL ?? undefined} alt={user.name} />
+                          <AvatarFallback className="bg-[#00ff9d]/20 text-[#00ff9d] text-[8px] font-bold">
+                            {user.name.charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        <Icon className="w-5 h-5 sm:w-4 sm:h-4 text-muted-foreground group-hover:text-[#00ff9d] transition-colors" />
+                      )}
+                      <span className="text-[10px] font-medium text-muted-foreground group-hover:text-[#00ff9d] transition-colors">
+                        {item.label}
+                      </span>
+                    </button>
+                  );
+                }
+
                 return (
                   <button
                     key={item.id}
